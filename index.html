@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#5d4037">
+    <meta name="description" content="Inventory audit and equipment calibration record system">
+    <title>GRID V3.0 | Calibration & Inventory System</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="alertBanner" role="alert">
+        DUPLICATE DETECTED: Scanned by <span id="prevPIC">-</span> at <span id="prevTime">-</span>
+    </div>
+
+    <div id="syncProgressContainer" class="sync-progress" hidden>
+        <div id="syncProgressBar" class="sync-progress-bar"></div>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="loginOverlay">
+        <div class="login-card">
+            <div class="scanner-line"></div>
+            <div class="login-kicker">GRID V3.0 | Dev by F4REAST </div>
+            <div class="glitch-title">CALIBRATION &amp; INVENTORY SYSTEM</div>
+            <label class="sr-only" for="username">Name</label>
+            <input type="text" id="username" placeholder="Name" autocomplete="username">
+            <label class="sr-only" for="password">Password</label>
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+            <button class="btn-init" onclick="checkLogin()">LOGIN</button>
+        </div>
+    </div>
+    <div id="moduleOverlay" class="module-overlay" hidden>
+        <div class="module-shell">
+            <header class="module-user-bar">
+                <div class="user-identity">
+                    <div id="moduleSyncStatus" class="connection-dot" title="Cloud connection status"></div>
+                    <div>
+                        <span class="eyebrow">SIGNED IN</span>
+                        <div class="signed-in-line">
+                            <strong id="moduleUserDisp">-</strong>
+                            <span id="moduleAccessModeBadge" class="access-mode-badge" aria-live="polite">MODE</span>
+                        </div>
+                    </div>
+                    <span id="moduleSyncStatusText" class="connection-label">Connecting...</span>
+                </div>
+                <button id="moduleLogoutButton" type="button" onclick="logout()" class="btn-logout">Logout</button>
+            </header>
+
+            <section class="module-intro">
+                <span class="eyebrow">GRID WORKSPACE</span>
+                <h1>Choose a system</h1>
+                <p>Select the work area for this session. You can switch between systems without signing in again.</p>
+            </section>
+
+            <section class="module-card-grid" aria-label="System selection">
+                <button type="button" class="module-card module-card-inventory" onclick="openSystemModule('inventory')">
+                    <span class="module-icon" aria-hidden="true">INV</span>
+                    <span class="module-card-copy">
+                        <strong>Inventory</strong>
+                        <small>Scan equipment, verify location and stickers, track missing items, and export audit reports.</small>
+                    </span>
+                    <span class="module-card-action">Open Inventory</span>
+                </button>
+
+                <button type="button" class="module-card module-card-calibration" onclick="openSystemModule('calibration')">
+                    <span class="module-icon" aria-hidden="true">CAL</span>
+                    <span class="module-card-copy">
+                        <strong>Calibration</strong>
+                        <small>Scan equipment, edit master details, complete a verification template, and attach the final PDF.</small>
+                    </span>
+                    <span class="module-card-action">Open Calibration</span>
+                </button>
+            </section>
+        </div>
+    </div>
+
+    <main id="mainApp" hidden>
+        <header class="user-bar">
+            <div class="user-identity">
+                <div id="syncStatus" class="connection-dot" title="Cloud connection status"></div>
+                <div>
+                    <span class="eyebrow">SIGNED IN</span>
+                    <div class="signed-in-line">
+                        <strong id="userDisp">-</strong>
+                        <span id="accessModeBadge" class="access-mode-badge" aria-live="polite">MODE</span>
+                    </div>
+                </div>
+                <span id="syncStatusText" class="connection-label">Connecting...</span>
+                <span id="pendingSyncBadge" class="sync-badge">0 pending</span>
+            </div>
+            <div class="header-actions">
+                <button type="button" onclick="showModuleChooser()" class="btn-secondary">Switch System</button>
+                <button id="clearCloudButton" onclick="clearAllCloudData()" class="btn-danger-ghost developer-only" hidden>Clear Cloud</button>
+                <button id="logoutButton" onclick="logout()" class="btn-logout">Logout</button>
+            </div>
+        </header>
+
+        <section class="scanner-console" aria-labelledby="scannerConsoleTitle">
+            <div class="scanner-console-main">
+                <div class="scanner-status-block">
+                    <span class="eyebrow" id="scannerConsoleTitle">SCANNER CONSOLE</span>
+                    <div class="scanner-state-line">
+                        <span id="scannerStateDot" class="scanner-state-dot ready"></span>
+                        <strong id="scannerStatusText">Scanner ready</strong>
+                    </div>
+                    <div class="scanner-last-grid">
+                        <div>
+                            <span>Last scan</span>
+                            <strong id="lastScanCode">None</strong>
+                        </div>
+                        <div>
+                            <span>Result</span>
+                            <strong id="lastScanResult">Waiting</strong>
+                        </div>
+                        <div>
+                            <span>Last sync</span>
+                            <strong id="lastSyncTime">Not yet</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="scanner-controls">
+                    <button id="cameraToggleButton" onclick="toggleCamera()" class="btn-camera">Start Camera</button>
+                    <button id="torchButton" onclick="toggleTorch()" class="btn-secondary" disabled>Flashlight</button>
+                    <label class="control-field compact-field" for="cameraSelect">
+                        <span>Camera</span>
+                        <select id="cameraSelect" aria-label="Select camera">
+                            <option value="">Rear camera (auto)</option>
+                        </select>
+                    </label>
+                    <label class="switch-control">
+                        <input type="checkbox" id="continuousMode" checked>
+                        <span class="switch-track" aria-hidden="true"></span>
+                        <span>Continuous mode</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="manual-entry-container">
+                <label class="sr-only" for="manualBarcode">Enter barcode manually</label>
+                <input type="text" id="manualBarcode" placeholder="Scan with hardware reader or enter barcode manually..." autocomplete="off">
+                <button onclick="submitManualEntry()" class="btn-primary">Process Code</button>
+            </div>
+
+            <div id="reader" aria-label="Camera scanner"></div>
+            <input type="text" id="barcodeCollector" class="hidden-scanner-input" autocomplete="off" aria-hidden="true">
+        </section>
+
+        <section class="dashboard-grid" aria-label="Audit overview">
+            <article class="progress-container" onclick="setQuickView('pending')" role="button" tabindex="0">
+                <div class="gauge-wrap">
+                    <canvas id="gaugeCanvas" width="110" height="110"></canvas>
+                    <div id="progressPercent" class="gauge-text">0%</div>
+                </div>
+                <div>
+                    <div id="progressLabel" class="panel-title success-text">CALIBRATION PROGRESS</div>
+                    <div id="progressSubLabel" class="panel-subtitle">Scanned: 0 / 0</div>
+                    <span class="panel-hint">Select to view pending items</span>
+                </div>
+            </article>
+
+            <article class="progress-container analysis-panel">
+                <div class="chart-wrap">
+                    <canvas id="failureChart"></canvas>
+                </div>
+                <div class="chart-copy">
+                    <div class="panel-title danger-text">ABNORMAL ANALYSIS</div>
+                    <div id="failureLegend" class="failure-legend">No failures detected.</div>
+                </div>
+            </article>
+        </section>
+
+        <section class="stats-bar" aria-label="Audit statistics">
+            <button class="stat-card" onclick="setQuickView('all')">
+                <span id="totalScans" class="stat-val">0</span>
+                <span class="stat-lbl">Items Scanned</span>
+            </button>
+            <button class="stat-card stat-pass" onclick="setQuickView('passed')">
+                <span id="totalPassed" class="stat-val">0</span>
+                <span class="stat-lbl">Passed</span>
+            </button>
+            <button class="stat-card stat-fail" onclick="setQuickView('abnormal')">
+                <span id="totalFails" class="stat-val">0</span>
+                <span class="stat-lbl">Abnormal</span>
+            </button>
+            <button class="stat-card stat-missing" onclick="setQuickView('missing')">
+                <span id="totalMissing" class="stat-val">0</span>
+                <span class="stat-lbl">Missing</span>
+            </button>
+            <button class="stat-card stat-pending" onclick="setQuickView('pending')">
+                <span id="totalNotScanned" class="stat-val">0</span>
+                <span class="stat-lbl">Not Scanned</span>
+            </button>
+            <button class="stat-card stat-unregistered" onclick="setQuickView('unregistered')">
+                <span id="totalUnregistered" class="stat-val">0</span>
+                <span class="stat-lbl">Unregistered</span>
+            </button>
+        </section>
+
+        <section class="load-zone">
+            <div>
+                <span class="eyebrow">MASTER DATA</span>
+                <strong>Load CSV or Excel with validation preview</strong>
+                <p>Supports Equipment Code/Name/Location/Due Date/Status/MSA and EquipName/SerialNo/EquipCode/LocationName/Building/ProdType layouts.</p>
+            </div>
+            <label class="file-button" for="masterFile">Choose Master File</label>
+            <input type="file" id="masterFile" accept=".csv,.xlsx,.xls" onchange="loadMasterData(this)">
+        </section>
+
+        <section id="filterZone" class="filter-panel" aria-label="Audit filters">
+            <label class="control-field search-field" for="globalSearch">
+                <span>Search</span>
+                <input type="search" id="globalSearch" placeholder="Code, serial, name, location, auditor or remark...">
+            </label>
+            <div class="control-field">
+                <span id="filterBuildingFieldLabel">Building</span>
+                <div class="multi-select" id="filterBuildingWidget" data-default-label="All Buildings">
+                    <button type="button" class="multi-select-trigger" id="filterBuildingTrigger"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-labelledby="filterBuildingFieldLabel filterBuildingSummary"
+                            onclick="toggleMultiFilter('filterBuilding')">
+                        <span id="filterBuildingSummary" class="multi-select-summary">All Buildings</span>
+                        <span id="filterBuildingCount" class="multi-select-count" hidden>0</span>
+                        <span class="multi-select-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="multi-select-menu" id="filterBuildingMenu" hidden>
+                        <div class="multi-select-search-wrap">
+                            <input type="search" id="filterBuildingOptionSearch" class="multi-select-search"
+                                   placeholder="Search options..." aria-label="Search building options"
+                                   oninput="filterMultiFilterOptions('filterBuilding', this.value)">
+                        </div>
+                        <div class="multi-select-toolbar">
+                            <button type="button" onclick="selectAllMultiFilter('filterBuilding')">Select all</button>
+                            <button type="button" onclick="clearMultiFilter('filterBuilding')">Clear</button>
+                        </div>
+                        <div class="multi-select-options" id="filterBuildingOptions" role="group" aria-label="Building options"></div>
+                        <div class="multi-select-empty" id="filterBuildingEmpty" hidden>No matching options</div>
+                    </div>
+                    <select id="filterBuilding" multiple hidden aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+            <div class="control-field">
+                <span id="filterProductionFieldLabel">Production</span>
+                <div class="multi-select" id="filterProductionWidget" data-default-label="All Production">
+                    <button type="button" class="multi-select-trigger" id="filterProductionTrigger"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-labelledby="filterProductionFieldLabel filterProductionSummary"
+                            onclick="toggleMultiFilter('filterProduction')">
+                        <span id="filterProductionSummary" class="multi-select-summary">All Production</span>
+                        <span id="filterProductionCount" class="multi-select-count" hidden>0</span>
+                        <span class="multi-select-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="multi-select-menu" id="filterProductionMenu" hidden>
+                        <div class="multi-select-search-wrap">
+                            <input type="search" id="filterProductionOptionSearch" class="multi-select-search"
+                                   placeholder="Search options..." aria-label="Search production options"
+                                   oninput="filterMultiFilterOptions('filterProduction', this.value)">
+                        </div>
+                        <div class="multi-select-toolbar">
+                            <button type="button" onclick="selectAllMultiFilter('filterProduction')">Select all</button>
+                            <button type="button" onclick="clearMultiFilter('filterProduction')">Clear</button>
+                        </div>
+                        <div class="multi-select-options" id="filterProductionOptions" role="group" aria-label="Production options"></div>
+                        <div class="multi-select-empty" id="filterProductionEmpty" hidden>No matching options</div>
+                    </div>
+                    <select id="filterProduction" multiple hidden aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+            <div class="control-field">
+                <span id="filterMonthFieldLabel">Due Month</span>
+                <div class="multi-select" id="filterMonthWidget" data-default-label="All Months">
+                    <button type="button" class="multi-select-trigger" id="filterMonthTrigger"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-labelledby="filterMonthFieldLabel filterMonthSummary"
+                            onclick="toggleMultiFilter('filterMonth')">
+                        <span id="filterMonthSummary" class="multi-select-summary">All Months</span>
+                        <span id="filterMonthCount" class="multi-select-count" hidden>0</span>
+                        <span class="multi-select-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="multi-select-menu" id="filterMonthMenu" hidden>
+                        <div class="multi-select-search-wrap">
+                            <input type="search" id="filterMonthOptionSearch" class="multi-select-search"
+                                   placeholder="Search options..." aria-label="Search due month options"
+                                   oninput="filterMultiFilterOptions('filterMonth', this.value)">
+                        </div>
+                        <div class="multi-select-toolbar">
+                            <button type="button" onclick="selectAllMultiFilter('filterMonth')">Select all</button>
+                            <button type="button" onclick="clearMultiFilter('filterMonth')">Clear</button>
+                        </div>
+                        <div class="multi-select-options" id="filterMonthOptions" role="group" aria-label="Due Month options"></div>
+                        <div class="multi-select-empty" id="filterMonthEmpty" hidden>No matching options</div>
+                    </div>
+                    <select id="filterMonth" multiple hidden aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+            <div class="control-field">
+                <span id="filterYearFieldLabel">Due Year</span>
+                <div class="multi-select" id="filterYearWidget" data-default-label="All Years">
+                    <button type="button" class="multi-select-trigger" id="filterYearTrigger"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-labelledby="filterYearFieldLabel filterYearSummary"
+                            onclick="toggleMultiFilter('filterYear')">
+                        <span id="filterYearSummary" class="multi-select-summary">All Years</span>
+                        <span id="filterYearCount" class="multi-select-count" hidden>0</span>
+                        <span class="multi-select-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="multi-select-menu" id="filterYearMenu" hidden>
+                        <div class="multi-select-search-wrap">
+                            <input type="search" id="filterYearOptionSearch" class="multi-select-search"
+                                   placeholder="Search options..." aria-label="Search due year options"
+                                   oninput="filterMultiFilterOptions('filterYear', this.value)">
+                        </div>
+                        <div class="multi-select-toolbar">
+                            <button type="button" onclick="selectAllMultiFilter('filterYear')">Select all</button>
+                            <button type="button" onclick="clearMultiFilter('filterYear')">Clear</button>
+                        </div>
+                        <div class="multi-select-options" id="filterYearOptions" role="group" aria-label="Due Year options"></div>
+                        <div class="multi-select-empty" id="filterYearEmpty" hidden>No matching options</div>
+                    </div>
+                    <select id="filterYear" multiple hidden aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+            <div class="control-field">
+                <span id="filterStatusFieldLabel">Equipment Status</span>
+                <div class="multi-select align-right" id="filterStatusWidget" data-default-label="All Statuses">
+                    <button type="button" class="multi-select-trigger" id="filterStatusTrigger"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-labelledby="filterStatusFieldLabel filterStatusSummary"
+                            onclick="toggleMultiFilter('filterStatus')">
+                        <span id="filterStatusSummary" class="multi-select-summary">All Statuses</span>
+                        <span id="filterStatusCount" class="multi-select-count" hidden>0</span>
+                        <span class="multi-select-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="multi-select-menu" id="filterStatusMenu" hidden>
+                        <div class="multi-select-search-wrap">
+                            <input type="search" id="filterStatusOptionSearch" class="multi-select-search"
+                                   placeholder="Search options..." aria-label="Search equipment status options"
+                                   oninput="filterMultiFilterOptions('filterStatus', this.value)">
+                        </div>
+                        <div class="multi-select-toolbar">
+                            <button type="button" onclick="selectAllMultiFilter('filterStatus')">Select all</button>
+                            <button type="button" onclick="clearMultiFilter('filterStatus')">Clear</button>
+                        </div>
+                        <div class="multi-select-options" id="filterStatusOptions" role="group" aria-label="Equipment Status options"></div>
+                        <div class="multi-select-empty" id="filterStatusEmpty" hidden>No matching options</div>
+                    </div>
+                    <select id="filterStatus" multiple hidden aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+            <div class="filter-actions">
+                <button onclick="resetFilters()" class="btn-secondary">Reset</button>
+                <button onclick="exportFilteredCsv()" class="btn-csv"
+                        title="Export filtered equipment with MISSING, PENDING, or OK status">Export CSV Filtered</button>
+                <button onclick="exportFilteredOnly()" class="btn-excel">Filtered Excel</button>
+                <button onclick="exportToExcel()" class="btn-full-report">Full Report</button>
+            </div>
+        </section>
+
+        <nav class="quick-filter-bar" aria-label="Quick views">
+            <button class="quick-filter active" data-view="all" onclick="setQuickView('all')">All scans</button>
+            <button class="quick-filter" data-view="abnormal" onclick="setQuickView('abnormal')">Abnormal</button>
+            <button class="quick-filter" data-view="missing" onclick="setQuickView('missing')">Missing</button>
+            <button class="quick-filter" data-view="passed" onclick="setQuickView('passed')">Passed</button>
+            <button class="quick-filter" data-view="mine" onclick="setQuickView('mine')">My scans</button>
+            <button class="quick-filter" data-view="unregistered" onclick="setQuickView('unregistered')">Unregistered</button>
+            <button class="quick-filter" data-view="pending" onclick="setQuickView('pending')">Pending</button>
+        </nav>
+
+        <section id="auditLogsSection">
+            <div class="section-header">
+                <span>Recent Audit Logs</span>
+                <small id="auditResultCount">0 records</small>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th><th>Code</th><th>Name</th><th>PIC</th><th>Physical Loc.</th><th>Sticker Loc.</th><th>Due</th><th>Status</th><th>MSA</th><th>Remark</th><th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryBody"></tbody>
+                </table>
+                <div id="auditEmptyState" class="empty-state" hidden>No audit records match the current view.</div>
+            </div>
+            <button id="loadMoreAudits" class="load-more" onclick="loadMoreAuditRows()" hidden>Show more audit records</button>
+        </section>
+
+        <section id="pendingSection">
+            <div class="section-header">
+                <span>Pending Items</span>
+                <small id="pendingResultCount">0 items</small>
+            </div>
+            <div class="table-container pending-table-container">
+                <table>
+                    <thead>
+                        <tr><th>Code</th><th>Name</th><th>Location</th><th>Due</th><th>Status</th><th>MSA</th><th>Action</th></tr>
+                    </thead>
+                    <tbody id="pendingBody"></tbody>
+                </table>
+                <div id="pendingEmptyState" class="empty-state" hidden>No pending items match the current filters.</div>
+            </div>
+        </section>
+    </main>
+    <main id="calibrationApp" hidden>
+        <header class="user-bar calibration-user-bar">
+            <div class="user-identity">
+                <div id="calibrationSyncStatus" class="connection-dot" title="Cloud connection status"></div>
+                <div>
+                    <span class="eyebrow">CALIBRATION WORKSPACE</span>
+                    <div class="signed-in-line">
+                        <strong id="calibrationUserDisp">-</strong>
+                        <span id="calibrationAccessModeBadge" class="access-mode-badge" aria-live="polite">MODE</span>
+                    </div>
+                </div>
+                <span id="calibrationSyncStatusText" class="connection-label">Connecting...</span>
+            </div>
+            <div class="header-actions calibration-header-actions">
+                <button type="button" onclick="showModuleChooser()" class="btn-secondary">Switch System</button>
+                <button id="calibrationLogoutButton" type="button" onclick="logout()" class="btn-logout">Logout</button>
+            </div>
+        </header>
+
+        <section class="calibration-hero">
+            <div class="calibration-hero-copy">
+                <span class="eyebrow">EQUIPMENT CALIBRATION</span>
+                <h1>Scan, verify, document, and archive</h1>
+                <p>Scan an equipment code to load its master data. Update any field, choose the correct verification template, then upload the completed PDF under the equipment code.</p>
+            </div>
+            <div class="calibration-workflow-steps" aria-label="Calibration workflow">
+                <span><b>1</b> Scan code</span>
+                <span><b>2</b> Edit details</span>
+                <span><b>3</b> Complete template</span>
+                <span><b>4</b> Upload PDF</span>
+            </div>
+        </section>
+
+        <section class="calibration-scanner-panel" aria-labelledby="calibrationScannerTitle">
+            <div class="calibration-scanner-copy">
+                <span class="eyebrow" id="calibrationScannerTitle">EQUIPMENT CODE</span>
+                <div class="scanner-state-line calibration-scanner-state">
+                    <span id="calibrationScannerDot" class="scanner-state-dot ready"></span>
+                    <strong id="calibrationScannerStatus">Ready to scan</strong>
+                </div>
+                <div class="calibration-scan-meta">
+                    <span>Loaded code</span>
+                    <strong id="calibrationLoadedCode">None</strong>
+                    <span>Master status</span>
+                    <strong id="calibrationMasterState">Waiting</strong>
+                </div>
+            </div>
+
+            <div class="calibration-scanner-controls">
+                <div class="manual-entry-container calibration-manual-entry">
+                    <label class="sr-only" for="calibrationScanInput">Scan or enter equipment code</label>
+                    <input type="text" id="calibrationScanInput" placeholder="Scan equipment code or enter manually..." autocomplete="off">
+                    <button type="button" class="btn-primary" onclick="submitCalibrationCode()">Load Equipment</button>
+                </div>
+                <div class="calibration-camera-row">
+                    <button id="calibrationCameraButton" type="button" class="btn-camera" onclick="toggleCalibrationCamera()">Start Camera</button>
+                    <label class="control-field compact-field" for="calibrationCameraSelect">
+                        <span>Camera</span>
+                        <select id="calibrationCameraSelect" aria-label="Select calibration scanner camera">
+                            <option value="">Rear camera (auto)</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="calibrationReader" aria-label="Calibration camera scanner"></div>
+            </div>
+        </section>
+
+        <section class="calibration-main-grid">
+            <article class="calibration-panel equipment-detail-panel">
+                <div class="calibration-panel-header">
+                    <div>
+                        <span class="eyebrow">MASTER EQUIPMENT</span>
+                        <h2>Equipment details</h2>
+                    </div>
+                    <span id="calibrationEquipmentBadge" class="calibration-record-badge neutral">No equipment</span>
+                </div>
+
+                <form id="calibrationEquipmentForm" class="calibration-form" onsubmit="event.preventDefault(); saveCalibrationEquipmentDetails();">
+                    <input type="hidden" id="calibrationOriginalCode">
+
+                    <label class="calibration-field calibration-field-wide">
+                        <span>Equipment Code *</span>
+                        <input id="calEquipmentCode" type="text" maxlength="80" autocomplete="off" required>
+                    </label>
+                    <label class="calibration-field calibration-field-wide">
+                        <span>Equipment Name *</span>
+                        <input id="calEquipmentName" type="text" maxlength="160" autocomplete="off" required>
+                    </label>
+                    <label class="calibration-field">
+                        <span>Serial No.</span>
+                        <input id="calSerialNo" type="text" maxlength="100" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Status</span>
+                        <input id="calEquipmentStatus" type="text" list="calibrationStatusOptions" maxlength="60" autocomplete="off">
+                    </label>
+                    <label class="calibration-field calibration-field-wide">
+                        <span>Location</span>
+                        <input id="calLocation" type="text" maxlength="180" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Building</span>
+                        <input id="calBuilding" type="text" maxlength="60" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Production</span>
+                        <input id="calProduction" type="text" maxlength="80" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>MSA Requirement</span>
+                        <input id="calMsa" type="text" list="calibrationMsaOptions" maxlength="40" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Maker</span>
+                        <input id="calMaker" type="text" maxlength="100" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Model No.</span>
+                        <input id="calModelNo" type="text" maxlength="100" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Class</span>
+                        <input id="calEquipmentClass" type="text" maxlength="100" autocomplete="off">
+                    </label>
+                    <label class="calibration-field">
+                        <span>Section</span>
+                        <input id="calSection" type="text" maxlength="80" autocomplete="off">
+                    </label>
+
+                    <div class="calibration-date-block calibration-field-wide">
+                        <div class="calibration-date-heading">
+                            <div>
+                                <span class="eyebrow">CALIBRATION SCHEDULE</span>
+                                <strong>Next date is calculated automatically</strong>
+                            </div>
+                            <span id="calibrationDueDisplay" class="due-code-badge">DUE: -</span>
+                        </div>
+                        <div class="calibration-date-grid">
+                            <label class="calibration-field">
+                                <span>Calibration Date *</span>
+                                <input id="calibrationDate" type="date" required>
+                            </label>
+                            <label class="calibration-field">
+                                <span>Interval (Months) *</span>
+                                <input id="calibrationInterval" type="number" min="1" max="120" step="1" value="12" required>
+                            </label>
+                            <label class="calibration-field">
+                                <span>Next Verification Date</span>
+                                <input id="calibrationNextDate" type="date" readonly>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="calibration-form-actions calibration-field-wide">
+                        <button id="saveCalibrationEquipmentButton" type="submit" class="btn-save" disabled>Save Equipment Details</button>
+                        <button type="button" class="btn-secondary" onclick="resetCalibrationWorkspace()">Clear Workspace</button>
+                    </div>
+                </form>
+
+                <datalist id="calibrationStatusOptions">
+                    <option value="ACTIVE"></option>
+                    <option value="INACTIVE"></option>
+                    <option value="UNDER REPAIR"></option>
+                    <option value="OUT OF SERVICE"></option>
+                    <option value="MISSING"></option>
+                    <option value="DISPOSED"></option>
+                </datalist>
+                <datalist id="calibrationMsaOptions">
+                    <option value="YES"></option>
+                    <option value="NO"></option>
+                    <option value="N/A"></option>
+                </datalist>
+            </article>
+
+            <article class="calibration-panel template-selection-panel">
+                <div class="calibration-panel-header">
+                    <div>
+                        <span class="eyebrow">VERIFICATION TEMPLATE</span>
+                        <h2>Select equipment type</h2>
+                    </div>
+                    <span id="calibrationTemplateBadge" class="calibration-record-badge neutral">Not selected</span>
+                </div>
+                <p class="calibration-panel-help">The scanned equipment details, calibration date, and interval are transferred into the selected template. Template measurements and judgment are saved with the calibration record.</p>
+
+                <div class="template-card-grid">
+                    <button id="weightTemplateCard" type="button" class="template-card" onclick="openCalibrationTemplate('digital-weight')" disabled>
+                        <span class="template-card-icon" aria-hidden="true">kg</span>
+                        <span>
+                            <strong>Digital Weight Measure</strong>
+                            <small>Linearity, repeatability, eccentric test, master standards, and approval stamps.</small>
+                        </span>
+                    </button>
+                    <button id="micrometerTemplateCard" type="button" class="template-card" onclick="openCalibrationTemplate('micrometer')" disabled>
+                        <span class="template-card-icon" aria-hidden="true">mm</span>
+                        <span>
+                            <strong>Micrometer</strong>
+                            <small>Appearance checks, measuring points, tolerance judgment, master standards, and stamps.</small>
+                        </span>
+                    </button>
+                </div>
+
+                <div class="template-selection-actions">
+                    <button id="syncTemplateButton" type="button" class="btn-secondary" onclick="syncEquipmentToCalibrationTemplate()" disabled>Sync Details to Template</button>
+                    <button id="printTemplateButton" type="button" class="btn-primary" onclick="printCalibrationTemplate()" disabled>Print / Save PDF</button>
+                </div>
+
+                <div class="calibration-result-preview">
+                    <span>Template result</span>
+                    <strong id="calibrationTemplateResult">PENDING</strong>
+                </div>
+            </article>
+        </section>
+
+        <section id="calibrationTemplateWorkspace" class="calibration-panel calibration-template-workspace" hidden>
+            <div class="calibration-panel-header template-workspace-header">
+                <div>
+                    <span class="eyebrow">ACTIVE TEMPLATE</span>
+                    <h2 id="calibrationTemplateTitle">Verification template</h2>
+                    <p id="calibrationTemplateHint">Complete the form, then use Print / Save PDF.</p>
+                </div>
+                <div class="template-workspace-actions">
+                    <button type="button" class="btn-secondary" onclick="pullEquipmentFromCalibrationTemplate()">Use Template Details</button>
+                    <button type="button" class="btn-primary" onclick="printCalibrationTemplate()">Print / Save PDF</button>
+                    <button type="button" class="btn-cancel" onclick="closeCalibrationTemplate()">Close Template</button>
+                </div>
+            </div>
+            <div id="calibrationTemplateLoading" class="template-loading">Loading template...</div>
+            <iframe id="calibrationTemplateFrame" title="Calibration verification template" loading="eager"></iframe>
+        </section>
+
+        <section class="calibration-main-grid calibration-record-grid">
+            <article class="calibration-panel calibration-upload-panel">
+                <div class="calibration-panel-header">
+                    <div>
+                        <span class="eyebrow">FINAL DOCUMENT</span>
+                        <h2>Save calibration record</h2>
+                    </div>
+                    <span id="calibrationSaveState" class="calibration-record-badge neutral">Not saved</span>
+                </div>
+                <p class="calibration-panel-help">Use the template's Print / Save PDF function, then select the completed PDF below. The file and record metadata are stored under the equipment code.</p>
+
+                <label class="pdf-drop-zone" for="calibrationPdfInput">
+                    <input id="calibrationPdfInput" type="file" accept="application/pdf,.pdf">
+                    <span class="pdf-drop-icon" aria-hidden="true">PDF</span>
+                    <strong id="calibrationPdfFileName">Choose completed calibration PDF</strong>
+                    <small id="calibrationPdfFileMeta">PDF only. Firebase Storage is used first, with a database fallback for smaller files.</small>
+                </label>
+
+                <div id="calibrationUploadProgress" class="calibration-upload-progress" hidden>
+                    <div id="calibrationUploadProgressBar"></div>
+                </div>
+                <div id="calibrationUploadStatus" class="calibration-upload-status" aria-live="polite"></div>
+
+                <div class="calibration-form-actions">
+                    <button id="saveCalibrationDraftButton" type="button" class="btn-secondary" onclick="saveCalibrationRecord(false)" disabled>Save Draft</button>
+                    <button id="uploadCalibrationPdfButton" type="button" class="btn-save" onclick="saveCalibrationRecord(true)" disabled>Upload PDF &amp; Save</button>
+                </div>
+            </article>
+
+            <article class="calibration-panel calibration-summary-panel">
+                <div class="calibration-panel-header">
+                    <div>
+                        <span class="eyebrow">EQUIPMENT HISTORY</span>
+                        <h2>Calibration summary</h2>
+                    </div>
+                </div>
+                <div class="calibration-summary-cards">
+                    <div><span id="calibrationRecordCount">0</span><small>Records</small></div>
+                    <div><span id="calibrationPdfCount">0</span><small>PDF files</small></div>
+                    <div><span id="calibrationLatestDate">-</span><small>Latest calibration</small></div>
+                    <div><span id="calibrationLatestDue">-</span><small>Next verification</small></div>
+                </div>
+                <p id="calibrationHistoryHint" class="calibration-panel-help">Scan an equipment code to view its calibration history.</p>
+            </article>
+        </section>
+
+        <section class="calibration-panel calibration-history-panel">
+            <div class="calibration-panel-header">
+                <div>
+                    <span class="eyebrow">ARCHIVED RECORDS</span>
+                    <h2>Calibration history</h2>
+                </div>
+                <small id="calibrationHistoryCount">0 records</small>
+            </div>
+            <div class="calibration-history-table-wrap">
+                <table class="calibration-history-table">
+                    <thead>
+                        <tr>
+                            <th>Calibration Date</th>
+                            <th>Next Verification</th>
+                            <th>Equipment Type</th>
+                            <th>Result</th>
+                            <th>Prepared By</th>
+                            <th>PDF</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calibrationHistoryBody"></tbody>
+                </table>
+                <div id="calibrationHistoryEmpty" class="empty-state">Scan equipment to load calibration records.</div>
+            </div>
+        </section>
+    </main>
+
+
+    <div id="qcModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="qcModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <span class="eyebrow">AUDIT CHECK</span>
+                    <h2 id="qcModalTitle">VERIFICATION</h2>
+                </div>
+                <button type="button" class="modal-close-x" onclick="closeModal()" aria-label="Close verification">&times;</button>
+            </div>
+
+            <div class="modal-scroll-body">
+                <div id="modalDataBox" class="modal-data-box"></div>
+
+                <div id="verificationProgress" class="verification-progress" aria-live="polite">
+                    Complete all four verification checks, or mark the equipment missing.
+                </div>
+
+                <div class="audit-grid">
+                    <div class="audit-row">
+                        <div class="audit-label-wrap">
+                            <label>Physical Location</label>
+                            <small>Is the equipment at its registered location?</small>
+                        </div>
+                        <div class="option-group">
+                            <button class="option-btn" id="btnLocCorrect" onclick="setToggle('Loc', 'CORRECT')">Correct</button>
+                            <button class="option-btn" id="btnLocWrong" onclick="setToggle('Loc', 'WRONG')">Wrong</button>
+                        </div>
+                    </div>
+
+                    <div class="audit-row">
+                        <div class="audit-label-wrap">
+                            <label>Location on Sticker</label>
+                            <small>Does the location printed on the sticker match the registered location?</small>
+                        </div>
+                        <div class="option-group">
+                            <button class="option-btn" id="btnStickerLocCorrect" onclick="setToggle('StickerLoc', 'CORRECT')">Correct</button>
+                            <button class="option-btn" id="btnStickerLocWrong" onclick="setToggle('StickerLoc', 'WRONG')">Wrong</button>
+                        </div>
+                    </div>
+
+                    <div class="audit-row">
+                        <div class="audit-label-wrap">
+                            <label>Due Date</label>
+                            <small id="dueSuggestionText">Check the sticker date.</small>
+                        </div>
+                        <div class="option-group option-group-three">
+                            <button class="option-btn" id="btnDueValid" onclick="setToggle('Due', 'VALID')">Valid</button>
+                            <button class="option-btn" id="btnDueExpired" onclick="setToggle('Due', 'EXPIRED')">Expired</button>
+                            <button class="option-btn" id="btnDueUnreadable" onclick="setToggle('Due', 'UNREADABLE')">Unreadable</button>
+                        </div>
+                        <button id="applyDueSuggestionButton" type="button" class="suggestion-button" onclick="applyDueSuggestion()" hidden>Apply system suggestion</button>
+                    </div>
+
+                    <div class="audit-row">
+                        <div class="audit-label-wrap">
+                            <label>MSA Sticker</label>
+                            <small id="msaRequirementText">Confirm whether the sticker is present.</small>
+                        </div>
+                        <div class="option-group option-group-three">
+                            <button id="btnMsaYes" onclick="setToggle('Msa', 'YES')" class="option-btn">Yes</button>
+                            <button id="btnMsaNo" onclick="setToggle('Msa', 'NO')" class="option-btn">No</button>
+                            <button id="btnMsaNa" onclick="setToggle('Msa', 'N/A')" class="option-btn">N/A</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="remark-block">
+                    <div class="remark-heading">
+                        <label for="qcRemark">Remarks</label>
+                        <button type="button" onclick="clearRemark()" class="text-button">Clear entry</button>
+                    </div>
+                    <input type="text" id="qcRemark" list="remarkOptions" placeholder="Optional for passed items; recommended for abnormal items...">
+                    <datalist id="remarkOptions">
+                        <option value="Missing due date sticker"></option>
+                        <option value="Damaged label"></option>
+                        <option value="Found from missing"></option>
+                        <option value="System not tally"></option>
+                        <option value="Location not match"></option>
+                        <option value="Location on sticker not match"></option>
+                        <option value="Wrong due date"></option>
+                        <option value="MSA sticker missing"></option>
+                        <option value="Equipment missing"></option>
+                    </datalist>
+                    <div id="remarkSuggestion" class="remark-suggestion" hidden>
+                        <span id="remarkSuggestionText"></span>
+                        <button type="button" onclick="applyRemarkSuggestion()">Use suggestion</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-action-bar">
+                <button id="btnMissingEquipment" type="button" class="btn-missing-equipment"
+                        onclick="submitMissingEquipment()"
+                        title="Save this item as missing without completing the verification checks">
+                    Mark Missing &amp; Save
+                </button>
+                <button id="btnSubmitQC" class="btn-save" onclick="submitQC()" disabled>Complete verification</button>
+                <button onclick="closeModal()" class="btn-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle" hidden>
+        <div class="import-modal-card">
+            <div class="modal-header">
+                <div>
+                    <span class="eyebrow">MASTER IMPORT</span>
+                    <h2 id="importModalTitle">Review import</h2>
+                </div>
+                <button type="button" class="modal-close-x" onclick="closeImportModal()" aria-label="Close import preview">&times;</button>
+            </div>
+            <div class="import-modal-body">
+                <div class="import-summary-grid">
+                    <div><span id="importValidCount">0</span><small>Valid rows</small></div>
+                    <div><span id="importWarningCount">0</span><small>Warnings</small></div>
+                    <div><span id="importErrorCount">0</span><small>Rejected rows</small></div>
+                    <div><span id="importDuplicateCount">0</span><small>Duplicates</small></div>
+                </div>
+
+                <div id="importIssuePanel" class="import-issues" hidden>
+                    <div class="section-header"><span>Validation issues</span></div>
+                    <div id="importIssueList"></div>
+                    <button type="button" class="btn-secondary" onclick="downloadImportIssues()">Download issue report</button>
+                </div>
+
+                <div class="section-header"><span>Preview</span><small>First 10 valid rows</small></div>
+                <div class="table-container import-preview-table">
+                    <table>
+                        <thead><tr><th>Code</th><th>Name</th><th>Location</th><th>Due</th><th>Status</th><th>MSA</th><th>Serial No.</th></tr></thead>
+                        <tbody id="importPreviewBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-action-bar">
+                <button id="confirmImportButton" class="btn-save" onclick="confirmMasterImport()">Import valid rows</button>
+                <button class="btn-cancel" onclick="closeImportModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDTddYSz7aZC6hICa-cYocdHM8my_Hjni0",
+            authDomain: "inventory-88cdd.firebaseapp.com",
+            databaseURL: "https://inventory-88cdd-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "inventory-88cdd",
+            storageBucket: "inventory-88cdd.firebasestorage.app",
+            messagingSenderId: "81194057977",
+            appId: "1:81194057977:web:de522987e70fd2bfeae228",
+            measurementId: "G-TX7N8QW16W"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const storage = typeof firebase.storage === "function" ? firebase.storage() : null;
+    </script>
+    <script src="script.js"></script>
+    <script src="enhancements.js"></script>
+    <script src="calibration.js"></script>
+</body>
+</html>

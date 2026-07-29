@@ -1,0 +1,3291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weight Measurer Verification Record</title>
+<style>
+  :root {
+    --ink: #151515;
+    --line: #2f2f2f;
+    --muted: #68707a;
+    --paper: #ffffff;
+    --workspace: #e9edf1;
+    --entry: #fffbd0;
+    --entry-focus: #fff4a4;
+    --computed: #f3f5f7;
+    --pass-bg: #e8f6ea;
+    --pass-fg: #17652d;
+    --fail-bg: #fde8e7;
+    --fail-fg: #a51f1f;
+    --pending-bg: #eef1f4;
+    --pending-fg: #5e6872;
+    --stamp: #bd1e1e;
+    --toolbar: #15212d;
+    --toolbar-2: #223243;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { background: var(--workspace); }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--workspace);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  button, input, select { font: inherit; }
+
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--toolbar), var(--toolbar-2));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  }
+
+  .toolbar-title {
+    margin-right: auto;
+    min-width: 220px;
+  }
+
+  .toolbar-title strong {
+    display: block;
+    font-size: 14px;
+    letter-spacing: .03em;
+  }
+
+  .toolbar-title span {
+    color: #b9c5d0;
+    font-size: 11px;
+  }
+
+  .tool-button {
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid rgba(255,255,255,.24);
+    border-radius: 6px;
+    color: #fff;
+    background: rgba(255,255,255,.08);
+    cursor: pointer;
+  }
+
+  .tool-button:hover { background: rgba(255,255,255,.17); }
+  .tool-button.primary { background: #b71c1c; border-color: #d45b5b; }
+  .tool-button.primary:hover { background: #cb2525; }
+
+  .profile-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 4px 8px;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 7px;
+    background: rgba(255,255,255,.07);
+  }
+
+  .profile-control label {
+    color: #dbe5ee;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .profile-control select {
+    min-width: 188px;
+    height: 29px;
+    padding: 5px 7px;
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 5px;
+    color: #fff;
+    background: rgba(0,0,0,.18);
+  }
+
+  .profile-control select option { color: #111; background: #fff; }
+
+
+  .save-indicator {
+    min-width: 116px;
+    color: #c8d3dd;
+    text-align: right;
+    font-size: 11px;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 18px auto 36px;
+    padding: 8mm;
+    background: var(--paper);
+    box-shadow: 0 12px 36px rgba(27, 38, 49, .18);
+  }
+
+  .document-header {
+    display: grid;
+    grid-template-columns: 30mm minmax(0, 1fr) 52mm;
+    gap: 3mm;
+    align-items: stretch;
+    margin-bottom: 2.5mm;
+  }
+
+  .brand-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 19mm;
+  }
+
+  .brand-block img {
+    display: block;
+    width: 28mm;
+    height: auto;
+  }
+
+  .record-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .record-title h1 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: .035em;
+  }
+
+  .record-title p {
+    margin: 3px 0 0;
+    color: #5e6267;
+    font-size: 9px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .mini-approval {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--line);
+  }
+
+  .mini-box {
+    min-width: 0;
+    min-height: 19mm;
+    border-left: 1px solid var(--line);
+  }
+
+  .mini-box:first-child { border-left: 0; }
+
+  .mini-label {
+    padding: 2px 3px;
+    border-bottom: 1px solid var(--line);
+    font-size: 8px;
+    text-align: center;
+  }
+
+  .mini-stamp {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 14mm;
+    padding: 2px;
+    overflow: hidden;
+    color: #777;
+    text-align: center;
+    font-size: 7px;
+  }
+
+  .mini-stamp.applied {
+    color: var(--stamp);
+    font-weight: 700;
+    line-height: 1.12;
+    text-transform: uppercase;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  th, td {
+    height: 7.1mm;
+    padding: 1.2mm 1.4mm;
+    border: 1px solid var(--line);
+    vertical-align: middle;
+  }
+
+  th {
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .field-label {
+    font-size: 9px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 3.2mm 0 1.2mm;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .section-heading .link-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #555e68;
+    font-size: 9px;
+    font-weight: 400;
+  }
+
+  .section-heading .link-option input { width: auto; }
+
+  .section-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: auto;
+  }
+
+  .section-help {
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 400;
+  }
+
+  .linearity-standard-cell {
+    position: relative;
+  }
+
+  .linearity-standard-cell input {
+    padding-right: 29px;
+  }
+
+
+  .section-cell {
+    font-size: 9px;
+    font-weight: 500;
+    text-align: left;
+  }
+
+  .table-title {
+    height: 9mm;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .subhead {
+    font-size: 9px;
+    line-height: 1.12;
+  }
+
+  .unit-row th,
+  .unit-row td {
+    height: 6mm;
+    padding-top: .8mm;
+    padding-bottom: .8mm;
+    font-size: 9px;
+  }
+
+  .compact th,
+  .compact td { height: 6.8mm; }
+
+  .meta-table input,
+  .condition-table input,
+  .condition-table select,
+  .data-table input,
+  .standard-table input,
+  .summary-table input,
+  .stamp-form input {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 0;
+    color: var(--ink);
+    background: var(--entry);
+    outline: 0;
+    text-align: center;
+  }
+
+  .meta-table input { text-align: left; }
+  #equipmentName { font-size: 9px; }
+  #equipmentClass { font-size: 8px; letter-spacing: -0.01em; }
+
+  input:focus,
+  select:focus {
+    background: var(--entry-focus) !important;
+    box-shadow: inset 0 0 0 2px #d9a900;
+  }
+
+  input[readonly] {
+    color: #30363b;
+    background: var(--computed);
+    cursor: default;
+  }
+
+  input[type="number"] { appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; }
+
+  select {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    padding: 2px 19px 2px 4px;
+    border: 0;
+    border-radius: 0;
+    color: var(--ink);
+    background-color: var(--entry);
+    text-align: center;
+    outline: 0;
+  }
+
+  .select-good { color: var(--pass-fg); background-color: var(--pass-bg) !important; }
+  .select-bad { color: var(--fail-fg); background-color: var(--fail-bg) !important; }
+  .select-empty { color: var(--pending-fg); background-color: var(--entry) !important; }
+
+  .condition-table .check-label {
+    font-size: 8px;
+    line-height: 1.1;
+    text-align: center;
+  }
+
+  .condition-table .environment-value {
+    padding: 0;
+  }
+
+  .condition-table .environment-unit {
+    padding-left: 1px;
+    padding-right: 1px;
+    text-align: center;
+  }
+
+  .data-table td { padding: 0; text-align: center; }
+  .data-table th { padding: 1mm; }
+
+  .computed-cell {
+    padding: 1mm !important;
+    background: var(--computed);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .judgment {
+    padding: .8mm !important;
+    font-weight: 700;
+    letter-spacing: .025em;
+    text-align: center;
+  }
+
+  .status-pass { color: var(--pass-fg); background: var(--pass-bg); }
+  .status-fail { color: var(--fail-fg); background: var(--fail-bg); }
+  .status-pending { color: var(--pending-fg); background: var(--pending-bg); }
+
+  .tolerance-input { font-weight: 600; }
+
+  .standard-table-wrap {
+    width: 72%;
+    margin: 3.2mm auto 0;
+  }
+
+  .standard-table {
+    width: 100%;
+    margin: 0;
+  }
+
+  .standard-table .table-title {
+    height: 7.5mm;
+    font-weight: 700;
+  }
+
+  .standard-table-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+
+  .standard-table-help {
+    color: var(--muted);
+    font-size: 9px;
+  }
+
+  .standard-row-button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    padding: 5px 9px;
+    border: 1px solid #7a8793;
+    border-radius: 5px;
+    color: #24313d;
+    background: #f7f9fb;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  .standard-row-button:hover { background: #eaf0f5; }
+
+  .standard-name-cell {
+    position: relative;
+  }
+
+  .standard-name-cell input {
+    padding-right: 29px;
+  }
+
+  .standard-row-remove {
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid #c75b5b;
+    border-radius: 4px;
+    color: #a51f1f;
+    background: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 18px;
+    transform: translateY(-50%);
+  }
+
+  .standard-row-remove:hover { background: #fde8e7; }
+
+  .summary-table {
+    margin-top: 3.2mm;
+  }
+
+  .summary-table td { height: 8mm; }
+
+  .summary-label {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .period-wrap {
+    display: grid;
+    grid-template-columns: 22mm 1fr;
+    align-items: center;
+    height: 100%;
+  }
+
+  .period-wrap input { text-align: center; }
+
+  .overall-status {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-align: center;
+  }
+
+  .stamp-section {
+    margin-top: 4mm;
+    padding-top: 2.5mm;
+    border-top: 2px solid var(--line);
+    break-inside: avoid;
+  }
+
+  .stamp-section h2 {
+    margin: 0 0 2mm;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .stamp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+  }
+
+  .stamp-card {
+    display: grid;
+    grid-template-columns: 42mm 1fr;
+    gap: 3mm;
+    min-height: 35mm;
+    padding: 2.5mm;
+    border: 1px solid var(--line);
+  }
+
+  .stamp-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 29mm;
+    padding: 2mm;
+    border: 1px dashed #aeb4ba;
+    overflow: hidden;
+    background: #fff;
+    text-align: center;
+  }
+
+  .stamp-preview.empty {
+    color: #8a9096;
+    font-size: 9px;
+  }
+
+  .generated-stamp {
+    width: 37mm;
+    max-width: 100%;
+    padding: 1.5mm 2mm;
+    border: 1.2mm double var(--stamp);
+    border-radius: 3mm;
+    color: var(--stamp);
+    transform: rotate(-2deg);
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .generated-stamp .stamp-role {
+    padding-bottom: 1mm;
+    border-bottom: .6mm solid var(--stamp);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .08em;
+  }
+
+  .generated-stamp .stamp-name {
+    margin-top: 1.2mm;
+    overflow-wrap: anywhere;
+    font-size: 8px;
+    font-weight: 800;
+  }
+
+  .generated-stamp .stamp-meta {
+    margin-top: .8mm;
+    font-size: 7px;
+    line-height: 1.15;
+  }
+
+  .uploaded-stamp {
+    max-width: 36mm;
+    max-height: 20mm;
+    object-fit: contain;
+  }
+
+  .uploaded-caption {
+    margin-top: 1mm;
+    color: var(--stamp);
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-transform: uppercase;
+  }
+
+  .stamp-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5mm 2mm;
+    align-content: start;
+  }
+
+  .stamp-form label {
+    display: block;
+    min-width: 0;
+    color: #555e68;
+    font-size: 8px;
+  }
+
+  .stamp-form label.full { grid-column: 1 / -1; }
+
+  .stamp-form input {
+    height: 7mm;
+    margin-top: .6mm;
+    border: 1px solid #b9bec4;
+    border-radius: 3px;
+    text-align: left;
+  }
+
+  .stamp-actions {
+    display: flex;
+    gap: 1.5mm;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    margin-top: .4mm;
+  }
+
+  .stamp-button {
+    padding: 1.4mm 2.2mm;
+    border: 1px solid #8d959d;
+    border-radius: 4px;
+    background: #f4f6f8;
+    cursor: pointer;
+    font-size: 8px;
+  }
+
+  .stamp-button.apply {
+    color: #fff;
+    border-color: #9d1717;
+    background: #b71c1c;
+  }
+
+  .stamp-button:hover { filter: brightness(.97); }
+
+  .stamp-file-name {
+    grid-column: 1 / -1;
+    min-height: 11px;
+    color: #747b82;
+    font-size: 7px;
+  }
+
+  .document-note {
+    margin: 2mm 0 0;
+    color: #676e75;
+    font-size: 7px;
+    text-align: right;
+  }
+
+  .toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 2000;
+    max-width: 360px;
+    padding: 10px 14px;
+    border-radius: 7px;
+    color: #fff;
+    background: rgba(25, 33, 41, .94);
+    box-shadow: 0 8px 22px rgba(0,0,0,.22);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0,0,0,0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  @media (max-width: 900px) {
+    .page {
+      width: calc(100% - 20px);
+      min-width: 760px;
+      margin: 10px;
+    }
+
+    body { overflow-x: auto; }
+    .toolbar { min-width: 780px; }
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+
+  @media print {
+    html, body {
+      width: 210mm;
+      margin: 0;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .toolbar,
+    .screen-only,
+    .toast { display: none !important; }
+
+    .page {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+
+    .record-title h1 { font-size: 16px; }
+    .document-header { margin-bottom: 2mm; }
+    .section-heading { margin-top: 2.5mm; }
+    .stamp-section { display: none !important; }
+    .standard-table-controls,
+    .standard-row-remove { display: none !important; }
+    .standard-name-cell input,
+    .linearity-standard-cell input { padding-right: 4px; }
+
+    input,
+    select {
+      color: #000 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[readonly] { background: transparent !important; }
+    select { padding-right: 4px; }
+
+    .status-pass { background: #e8f6ea !important; }
+    .status-fail { background: #fde8e7 !important; }
+    .status-pending { background: #eef1f4 !important; }
+    .select-good { background: #e8f6ea !important; }
+    .select-bad { background: #fde8e7 !important; }
+
+    .stamp-card {
+      grid-template-columns: 1fr;
+      min-height: 31mm;
+      padding: 2mm;
+    }
+
+    .stamp-preview {
+      min-height: 27mm;
+      border: 0;
+    }
+
+    .document-note { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar" role="region" aria-label="Document controls">
+    <div class="toolbar-title">
+      <strong>Digital Weight Measure Verification Record</strong>
+      <span>Standalone offline form — profile data is loaded from the workbook sheets.</span>
+    </div>
+    <div class="profile-control">
+      <label for="profileSelect">Sheet profile</label>
+      <select id="profileSelect" aria-label="Digital weight measure sheet profile">
+        <option value="profile_moisture">Moisture profile</option>
+        <option value="profile_1_10kg">1-10kg profile</option>
+        <option value="profile_2_50g">2-50g profile</option>
+        <option value="profile_100g">100g profile</option>
+        <option value="profile_2_200g">2-200g profile</option>
+        <option value="profile_2_500g" selected>2-500g profile</option>
+        <option value="profile_above_10kg">above 10kg profile</option>
+        <option value="profile_gf_3000">GF-3000 profile</option>
+        <option value="profile_spx6201jp">SPX6201JP profile</option>
+        <option value="profile_cux_1500">CUX 1500 profile</option>
+        <option value="profile_ek12ooi">EK12OOi profile</option>
+        <option value="profile_plt">PLT profile</option>
+      </select>
+      <button class="tool-button" type="button" id="applyProfileButton">Load Profile</button>
+    </div>
+    <button class="tool-button" type="button" id="resetButton">Reset Template</button>
+    <button class="tool-button" type="button" id="importButton">Import JSON</button>
+    <button class="tool-button" type="button" id="exportButton">Export JSON</button>
+    <button class="tool-button primary" type="button" id="printButton">Print / Save PDF</button>
+    <span class="save-indicator" id="saveIndicator">Ready</span>
+    <input class="visually-hidden" type="file" id="jsonFileInput" accept="application/json,.json">
+  </div>
+
+  <main class="page" id="verificationRecord">
+    <header class="document-header">
+      <div class="brand-block">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAl0AAADJAgMAAABkhG/EAAAAAXNSR0ICQMB9xQAAAAxQTFRFAAAA/////ktL/v7+6xX09AAABSVJREFUeNrt3Et64yAMAOC5/1HMQkfQnIcjsLDmFUDC4mEbJ7QjVnGqwG8hg+P2649tyYY/f3yaYDCDGcxgBjOYwQxmsBWbwQxmsNWawQxmsNWawQxmsNWawQxmsNXaLBiQaPsyMKLJskkwV8IorAGDA4z8qrCbKXsOdrPKJsHwC8Fuyp6bynVhtAJsExicsGBMhoW/B27CgjELJpM0ocgmb+KeH60Ei4f3q3/uVO7y0C8DC/EQblf/fwLz8dAtA6MvBbuzXsyFpUODXYPdWWHnfksy2HeB7cXxAjA4Cevv8VNhYRTm3gbDK7B2j/8FzI/CoL8vTILRORgarHR0NnHs3609BINFYO7LwLANG/hy9yismpPPwag99NtglT28NvTAVvksrB3+DhiuDQvVDKqwTpePwDqrBb4NRgWsPF4F1rkoR/bwqbAE6d3xfwyGI19Fwgdg1K7998GKmnKrwrBT+yM70hMw6CXsfTAQywX1YCM70lTYzg8aNYTvhhFPWH2x6C2/E2FIx1abSf6HEOETsFpC6MOw9veQd8GUhIWR2Bkw19pzj65GR/2ktmD4+hTEs0KlaDBW0niF8eBGTBXm4jmn81Ly7g4rRGOSoLcAQ/GWDoNXLxiHBv6p1wiQBO3a/xPnMb+JZcJcDOAVoMNevbjUAe+JYf/BxB8NQFFkr9/DYe4BipweAuqwqI9jiF/yxQ7ym2IpB5kPsZJoMCWgCou7f7pDxjIjKox/mKdXh3kRPgaLn3ydfABeNyg5oZw9CXM9GJyBxSCR5QhLL/NdlSwrOo7rXQ/mRmCFR8IgvYQRGL6ieQTygPiDAZijFowUGCowWa3iKy6HpXrAPgxasFh2Gx8L2UxLGMTXUIHFjI7Aaq6/GurCxCWKMRhYBM+e0lsNplRYXi5cCWPTGxSYnO0jzMmAk7CdrWNEylgCBix9rg7jAcWbXVhICrgIgxTMIy7C2NaXxsgwVtqpfrRvlRy2dWD55IZg3MNgeByrDiMVxl6ThIURWGAzkaekTIKvwIpx3VxYyg6OwESNdmFezM0YLOWnCXN9WHn/0YC5O7D8w/0sjNUCf6RSyv0IjNcug6VLKo8FAkYZBuMwuAHbT8OwCPFyQo59nILtElacYx5f7uH+Mdh+gAUJw1GYOFf5Wg+owmJ+cgVo9Zw7JQ7jVwIV9q3QHE5uBBZaMC+ml1VVE7brsP06zM2H7Rps78CkxysXuN943bGqUrbKw7pOD8LEWO4KLEyBsWsZHoLxgBqs8Gyfubk4AcvjtrbKAywUML4rFnXqz8K0C3xgDz8Bc+MwjmjDeFUpsBzidZgfhYEO6+zhwzB4BkYStlVg/iQMhmHHPfz8zUUJO8pBntx2CRZygQRRdx3YJoLnwqgJo3MwYq9BC6jC4sS598D2i7DQgnUeqWAP5k7BqIRBE+b6MPb18fggWX9AoMCaDwjqMK/AYgnBFFjqBSMCNVjqCs7B4DIM4ydJCneRTlfCRCHwJ7AFDEW4MtdVGL0y4BKMWF8SS4eRxFXplBDiAfG3LDAAcweY432hhHnJ3oprVAlRYUUfGuw1IGvpLZ9LJKp/A3JieQd7HjeIM4P0wZSF4tQrMLrYgrx2eKXn5/O8fx586OQIc3Sx+ds9lEmblLH7p/YMbL9/ah0YXuuPVQc8A7vftLncL2R+/n+hUWRh0MUS//3/PY7BPt4MZjCDrdYMZjCDrdYMZjCDrdYMZjCDrdYMZjCDrdYM9p1gtx7MP9cM9n1gvwDRJfSHXSnAZgAAAABJRU5ErkJggg==" alt="Murata logo">
+      </div>
+      <div class="record-title">
+        <h1>VERIFICATION RECORDS</h1>
+        <p id="recordSubtitle">Digital Weight Measure / Counting Scale</p>
+      </div>
+      <div class="mini-approval" aria-label="Approval stamp summary">
+        <div class="mini-box">
+          <div class="mini-label">Confirm by</div>
+          <div class="mini-stamp" id="miniConfirmed">Not stamped</div>
+        </div>
+        <div class="mini-box">
+          <div class="mini-label">Prepared by</div>
+          <div class="mini-stamp" id="miniPrepared">Not stamped</div>
+        </div>
+      </div>
+    </header>
+
+    <table class="meta-table" aria-label="Equipment information">
+      <colgroup>
+        <col style="width:15%"><col style="width:21%">
+        <col style="width:12%"><col style="width:18%">
+        <col style="width:16%"><col style="width:18%">
+      </colgroup>
+      <tbody>
+        <tr>
+          <th class="field-label">EQUIPMENT NAME:</th>
+          <td colspan="3"><input id="equipmentName" type="text" autocomplete="off"></td>
+          <th class="field-label">MAKER:</th>
+          <td><input id="maker" type="text" autocomplete="off"></td>
+        </tr>
+        <tr>
+          <th class="field-label">EQUIPMENT CODE:</th>
+          <td colspan="3"><input id="equipmentCode" type="text" autocomplete="off"></td>
+          <th class="field-label">CLASS:</th>
+          <td><input id="equipmentClass" type="text" autocomplete="off"></td>
+        </tr>
+        <tr>
+          <th class="field-label">MODEL NO:</th>
+          <td><input id="modelNo" type="text" autocomplete="off"></td>
+          <th class="field-label">SECTION:</th>
+          <td><input id="section" type="text" autocomplete="off"></td>
+          <th class="field-label">NEXT CALIBRATION:</th>
+          <td><input id="nextCalibration" type="date" readonly></td>
+        </tr>
+        <tr>
+          <th class="field-label">SERIAL NO:</th>
+          <td><input id="serialNo" type="text" autocomplete="off"></td>
+          <th class="field-label">LOCATION:</th>
+          <td><input id="location" type="text" autocomplete="off"></td>
+          <th class="field-label">CALIBRATION ON:</th>
+          <td><input id="calibrationOn" type="date"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="condition-table compact" aria-label="Appearance and function checks">
+      <colgroup>
+        <col style="width:18%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:13%"><col style="width:17%"><col style="width:12%"><col style="width:4%">
+      </colgroup>
+      <tbody>
+        <tr>
+          <th class="section-cell" rowspan="2">1. APPEARANCE</th>
+          <th class="check-label">Physical<br>condition</th>
+          <th class="check-label">Display / Writing</th>
+          <th class="check-label">Operation Button</th>
+          <th class="check-label">Rattle / Loose / Damage</th>
+          <th class="field-label">TEMPERATURE:</th>
+          <td class="environment-value"><input id="temperature" type="number" step="0.1"></td>
+          <td class="environment-unit">°C</td>
+        </tr>
+        <tr>
+          <td><select id="appearancePhysical" aria-label="Physical condition"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceDisplay" aria-label="Display and writing"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceOperation" aria-label="Operation button"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceDamage" aria-label="Rattle, loose or damage"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <th class="field-label">HUMIDITY:</th>
+          <td class="environment-value"><input id="humidity" type="number" step="0.1"></td>
+          <td class="environment-unit">%</td>
+        </tr>
+        <tr>
+          <th class="section-cell">2. FUNCTION</th>
+          <td colspan="4"><select id="functionCheck" aria-label="Function check"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td colspan="3" class="computed-cell">General operating condition</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="section-heading">
+      <span>3. LINEARITY MEASUREMENT</span>
+      <div class="section-actions screen-only">
+        <span class="section-help">Sheet profile controls standard points and tolerance rules.</span>
+        <button class="standard-row-button" type="button" id="addLinearityRowButton">+ Add Measuring Point</button>
+      </div>
+    </div>
+    <table class="data-table" aria-label="Linearity measurement">
+      <colgroup>
+        <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:13%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:12%">
+      </colgroup>
+      <thead>
+        <tr><th class="table-title" colspan="9">MEASURING DATA</th></tr>
+        <tr>
+          <th rowspan="2" class="subhead">STANDARD<br>VALUE (A)</th>
+          <th colspan="3" class="subhead">ACTUAL VALUE (<span data-unit-text>g</span>)</th>
+          <th rowspan="2" class="subhead">AVERAGE (B)<br><small>(<span data-unit-text>g</span>)</small></th>
+          <th rowspan="2" class="subhead">B - A<br><small>(<span data-unit-text>g</span>)</small></th>
+          <th colspan="2" class="subhead">TOLERANCE (<span data-unit-text>g</span>)</th>
+          <th rowspan="2" class="subhead">JUDGEMENT<br><small>PASS / FAIL</small></th>
+        </tr>
+        <tr class="unit-row">
+          <th>1</th><th>2</th><th>3</th><th>MIN</th><th>MAX</th>
+        </tr>
+      </thead>
+      <tbody id="linearityBody"></tbody>
+    </table>
+
+    <div class="section-heading"><span>4. REPEATABILITY TEST</span></div>
+    <table class="data-table compact" aria-label="Repeatability test">
+      <colgroup>
+        <col style="width:16%"><col style="width:24%"><col style="width:24%"><col style="width:10%"><col style="width:10%"><col style="width:16%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="subhead">STANDARD WEIGHT<br>(<span data-unit-text>g</span>)</th>
+          <th class="subhead">ACTUAL VALUE (<span data-unit-text>g</span>)</th>
+          <th class="subhead">DIFFERENT VALUE (<span data-unit-text>g</span>)</th>
+          <th class="subhead">MIN</th>
+          <th class="subhead">MAX</th>
+          <th class="subhead">JUDGEMENT</th>
+        </tr>
+      </thead>
+      <tbody id="repeatabilityBody"></tbody>
+    </table>
+
+    <div class="section-heading">
+      <span>5. ECCENTRIC TEST</span>
+      <label class="link-option screen-only"><input type="checkbox" id="linkEccentric" checked> Link deviations to repeatability readings</label>
+    </div>
+    <table class="data-table compact" aria-label="Eccentric test">
+      <colgroup>
+        <col style="width:14%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:18%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th rowspan="2" class="subhead">STD Applied (<span data-unit-text>g</span>)<br>As [A]</th>
+          <th colspan="5" class="subhead">ACTUAL VALUE / DEVIATION (<span data-unit-text>g</span>)</th>
+          <th colspan="2" class="subhead">TOLERANCE (<span data-unit-text>g</span>)</th>
+          <th rowspan="2" class="subhead">JUDGEMENT</th>
+        </tr>
+        <tr class="unit-row"><th>CENTER</th><th>FRONT</th><th>BACK</th><th>RIGHT</th><th>LEFT</th><th>MIN</th><th>MAX</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input id="eccStandard" type="number" step="0.01"></td>
+          <td><input id="eccCenter" type="number" step="0.01"></td>
+          <td><input id="eccFront" type="number" step="0.01"></td>
+          <td><input id="eccBack" type="number" step="0.01"></td>
+          <td><input id="eccRight" type="number" step="0.01"></td>
+          <td><input id="eccLeft" type="number" step="0.01"></td>
+          <td class="computed-cell" id="eccMin"></td>
+          <td><input class="tolerance-input" id="eccTolerance" type="number" step="0.01" min="0"></td>
+          <td class="judgment status-pending" id="eccJudgment">PENDING</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="standard-table-wrap">
+      <div class="standard-table-controls screen-only">
+        <span class="standard-table-help">Add one row for each calibration standard or master equipment used.</span>
+        <button class="standard-row-button" type="button" id="addStandardRowButton">+ Add Master Equipment Row</button>
+      </div>
+      <table class="standard-table" aria-label="Calibration standard and master equipment used">
+        <colgroup><col style="width:44%"><col style="width:31%"><col style="width:25%"></colgroup>
+        <thead>
+          <tr><th colspan="3" class="table-title">CALIBRATION STANDARD / MASTER EQUIPMENT USED</th></tr>
+          <tr><th class="subhead">EQUIPMENT NAME</th><th class="subhead">EQUIPMENT CODE</th><th class="subhead">EXPIRED DATE</th></tr>
+        </thead>
+        <tbody id="calibrationStandardsBody"></tbody>
+      </table>
+    </div>
+
+    <table class="summary-table" aria-label="Calibration period and total judgement">
+      <colgroup><col style="width:28%"><col style="width:30%"><col style="width:25%"><col style="width:17%"></colgroup>
+      <tbody>
+        <tr>
+          <th class="summary-label">CALIBRATION PERIOD:</th>
+          <td>
+            <div class="period-wrap">
+              <input id="calibrationPeriod" type="number" min="1" step="1">
+              <span>MONTHS</span>
+            </div>
+          </td>
+          <th class="summary-label">TOTAL JUDGEMENT:</th>
+          <td class="overall-status status-pending" id="totalJudgment">PENDING</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <section class="stamp-section" aria-labelledby="stampTitle">
+      <h2 id="stampTitle">6. VERIFICATION AND APPROVAL STAMPS</h2>
+      <div class="stamp-grid">
+        <article class="stamp-card" data-role="prepared">
+          <div class="stamp-preview empty" id="preparedStampPreview">Prepared stamp not applied</div>
+          <div class="stamp-form screen-only">
+            <label class="full">Prepared by name
+              <input id="preparedName" type="text" autocomplete="off">
+            </label>
+            <label>Section / Position
+              <input id="preparedSection" type="text" autocomplete="off">
+            </label>
+            <label>Date
+              <input id="preparedDate" type="date">
+            </label>
+            <label class="full">Optional stamp or signature image
+              <input id="preparedImageInput" type="file" accept="image/*">
+            </label>
+            <div class="stamp-file-name" id="preparedImageName">No image selected — a generated stamp will be used.</div>
+            <div class="stamp-actions">
+              <button class="stamp-button apply" type="button" data-apply-stamp="prepared">Apply Prepared Stamp</button>
+              <button class="stamp-button" type="button" data-remove-stamp="prepared">Remove</button>
+              <button class="stamp-button" type="button" data-clear-image="prepared">Clear Image</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="stamp-card" data-role="confirmed">
+          <div class="stamp-preview empty" id="confirmedStampPreview">Confirmation stamp not applied</div>
+          <div class="stamp-form screen-only">
+            <label class="full">Confirmed by name
+              <input id="confirmedName" type="text" autocomplete="off">
+            </label>
+            <label>Section / Position
+              <input id="confirmedSection" type="text" autocomplete="off">
+            </label>
+            <label>Date
+              <input id="confirmedDate" type="date">
+            </label>
+            <label class="full">Optional stamp or signature image
+              <input id="confirmedImageInput" type="file" accept="image/*">
+            </label>
+            <div class="stamp-file-name" id="confirmedImageName">No image selected — a generated stamp will be used.</div>
+            <div class="stamp-actions">
+              <button class="stamp-button apply" type="button" data-apply-stamp="confirmed">Apply Confirmation Stamp</button>
+              <button class="stamp-button" type="button" data-remove-stamp="confirmed">Remove</button>
+              <button class="stamp-button" type="button" data-clear-image="confirmed">Clear Image</button>
+            </div>
+          </div>
+        </article>
+      </div>
+      <p class="document-note">The stamp is generated and stored locally inside the exported JSON record. No server connection is used.</p>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+<script>
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'digital-weight-measure-profile-record-v3';
+  const DEFAULT_PROFILE = "profile_2_500g";
+  const MAX_LINEARITY_ROWS = 20;
+  const REPEATABILITY_READINGS = 5;
+  const MAX_STANDARD_ROWS = 30;
+  const ECC_IDS = ['eccCenter', 'eccFront', 'eccBack', 'eccRight', 'eccLeft'];
+  const PROFILES = {
+  "profile_moisture": {
+    "label": "Moisture",
+    "subtitle": "Moisture \u2014 Moisture weight unit",
+    "unit": "g",
+    "equipment": {
+      "name": "Moisture weight unit",
+      "code": "BEDB13-404",
+      "maker": "AND",
+      "className": "Ordinary 2nd class",
+      "modelNo": "AND",
+      "section": "ME960",
+      "serialNo": "P1062774",
+      "location": "B-CM-PROD",
+      "calibrationOn": "2025-12-04",
+      "temperature": 24,
+      "humidity": 56,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 5.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "20 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "STOPWATCH",
+        "code": "BEFD10-01",
+        "expiredDate": "Nov'26"
+      },
+      {
+        "name": "CALIBRATOR FLUKE",
+        "code": "BECI90-02",
+        "expiredDate": "Jul'26"
+      }
+    ]
+  },
+  "profile_1_10kg": {
+    "label": "1-10kg",
+    "subtitle": "1-10kg \u2014 DIGITAL WEIGHT MEASURE",
+    "unit": "kg",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURE",
+      "code": "BEDB13-32",
+      "maker": "AND",
+      "className": "Ordinary 2nd Class",
+      "modelNo": "HW-100KC",
+      "section": "ME9110",
+      "serialNo": "6B1402547",
+      "location": "A-LQH2-PROD",
+      "calibrationOn": "2026-02-19",
+      "temperature": 22,
+      "humidity": 63,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 1.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 5.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.3
+        }
+      },
+      {
+        "standard": 6.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.3
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.3
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "toleranceRule": {
+        "type": "fixed",
+        "value": 0.01
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "1 Kg",
+        "code": "BECB00-009",
+        "expiredDate": "JULY'27"
+      },
+      {
+        "name": "5 Kg",
+        "code": "BECB00-010",
+        "expiredDate": "JULY'27"
+      },
+      {
+        "name": "10 Kg",
+        "code": "BECB00-011",
+        "expiredDate": "JULY'21"
+      },
+      {
+        "name": "10 Kg",
+        "code": "BECB00-011",
+        "expiredDate": "JULY'27"
+      }
+    ]
+  },
+  "profile_2_50g": {
+    "label": "2-50g",
+    "subtitle": "2-50g \u2014 Digital Weight Measure",
+    "unit": "g",
+    "equipment": {
+      "name": "Digital Weight Measure",
+      "code": "BEDB13-10",
+      "maker": "AS ONE",
+      "className": "ORDINARY 2nd CLASS",
+      "modelNo": "ASP114",
+      "section": "ME9130",
+      "serialNo": "B348041212",
+      "location": "A-FP21-LPD-AREA",
+      "calibrationOn": "2026-06-09",
+      "temperature": 25,
+      "humidity": 56,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 5.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 9.997,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "STANDARD WEIGHT SET",
+        "code": "BEFB00-020",
+        "expiredDate": "DEC'26"
+      }
+    ]
+  },
+  "profile_100g": {
+    "label": "100g",
+    "subtitle": "100g \u2014 DIGITAL WEIGHT MEASURE",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURE",
+      "code": "BEDB13-04",
+      "maker": "E&E",
+      "className": "Ordinary 2nd class",
+      "modelNo": "FH300",
+      "section": "ME9120",
+      "serialNo": "431170050049",
+      "location": "C-RF-04A-STATION",
+      "calibrationOn": "2026-05-05",
+      "temperature": 24,
+      "humidity": 56,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 5.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  },
+  "profile_2_200g": {
+    "label": "2-200g",
+    "subtitle": "2-200g \u2014 DIGITAL WEIGHT MEASURER",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURER",
+      "code": "BEDB13-405",
+      "maker": "AND",
+      "className": "Ordinary 2nd class",
+      "modelNo": "HR-202i",
+      "section": "ME9140",
+      "serialNo": "15204967",
+      "location": "B-CM-PROD-TB",
+      "calibrationOn": "2026-07-22",
+      "temperature": 2,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 1000.0,
+        "toleranceRule": {
+          "type": "fixed",
+          "value": 3.0
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  },
+  "profile_2_500g": {
+    "label": "2-500g",
+    "subtitle": "2-500g \u2014 DIGITAL WEIGHT MEASURE (COUNTING)",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURE (COUNTING)",
+      "code": "BEDB13-402",
+      "maker": "VIBRA",
+      "className": "ORDINARY 1ST CLASS",
+      "modelNo": "CUX600",
+      "section": "ME9130",
+      "serialNo": "212114036",
+      "location": "B-CM-PROD-TB",
+      "calibrationOn": "2025-12-10",
+      "temperature": 25,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 500.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "STANDARD WEIGHT SET",
+        "code": "BEFB00-020",
+        "expiredDate": "DEC'26"
+      }
+    ]
+  },
+  "profile_above_10kg": {
+    "label": "above 10kg",
+    "subtitle": "above 10kg \u2014 DIGITAL WEIGHT MEASURER",
+    "unit": "kg",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURER",
+      "code": "BEDB13-32",
+      "maker": "AND",
+      "className": "Ordinary 2nd Class",
+      "modelNo": "GP-32K",
+      "section": "ME9130",
+      "serialNo": "14725620",
+      "location": "A-FP21-E-PLATING",
+      "calibrationOn": "2026-02-13",
+      "temperature": 22,
+      "humidity": 63,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 1.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 5.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.3
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "toleranceRule": {
+        "type": "fixed",
+        "value": 0.01
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "1 Kg",
+        "code": "BEFB00-020",
+        "expiredDate": "DEC'26"
+      },
+      {
+        "name": "5 Kg",
+        "code": "BECB00-010",
+        "expiredDate": "JULY'27"
+      },
+      {
+        "name": "10 Kg",
+        "code": "BECB00-011",
+        "expiredDate": "JULY'27"
+      }
+    ]
+  },
+  "profile_gf_3000": {
+    "label": "GF-3000",
+    "subtitle": "GF-3000 \u2014 DIGITAL WEIGHT MEASURE",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURE",
+      "code": "BEDB13-335",
+      "maker": "AND",
+      "className": "Ordinary 2nd class",
+      "modelNo": "GF-3000",
+      "section": "ME9130",
+      "serialNo": "T0391988",
+      "location": "A-AG43-PREPARATION",
+      "calibrationOn": "2026-07-03",
+      "temperature": 25.7,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 500.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 1000.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.3
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "500 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "1000 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  },
+  "profile_spx6201jp": {
+    "label": "SPX6201JP",
+    "subtitle": "SPX6201JP \u2014 DIGITAL WEIGHT MEASURE",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURE",
+      "code": "",
+      "maker": "AND",
+      "className": "Ordinary 2nd class",
+      "modelNo": "EK-6100I",
+      "section": "ME9120",
+      "serialNo": "P5323782",
+      "location": "C-RF15-HENSA-TB",
+      "calibrationOn": "2025-10-09",
+      "temperature": 25,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 1000.0,
+        "toleranceRule": {
+          "type": "fixed",
+          "value": 3.0
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "1000 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  },
+  "profile_cux_1500": {
+    "label": "CUX 1500",
+    "subtitle": "CUX 1500 \u2014 DIGITAL WEIGHT MEASURER",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURER",
+      "code": "BEDB13-19",
+      "maker": "VIBRA",
+      "className": "Ordinary 2nd class",
+      "modelNo": "CUX 1500",
+      "section": "ME9130",
+      "serialNo": "242115004",
+      "location": "B-CM-PROD",
+      "calibrationOn": "2026-01-12",
+      "temperature": 25,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 1000.0,
+        "toleranceRule": {
+          "type": "fixed",
+          "value": 3.0
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "1000 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  },
+  "profile_ek12ooi": {
+    "label": "EK12OOi",
+    "subtitle": "EK12OOi \u2014 DIGITAL WEIGHT MEASURER",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURER",
+      "code": "BEDB13-04",
+      "maker": "E&E",
+      "className": "Ordinary 2nd class",
+      "modelNo": "FH300",
+      "section": "ME9120",
+      "serialNo": "431170050049",
+      "location": "C-RF-04A-STATION",
+      "calibrationOn": "2026-05-05",
+      "temperature": 25,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      },
+      {
+        "standard": 1000.0,
+        "toleranceRule": {
+          "type": "fixed",
+          "value": 3.0
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BECB00-001",
+        "expiredDate": "Jul'27"
+      },
+      {
+        "name": "10 gram",
+        "code": "BECB00-003",
+        "expiredDate": "Jul'27"
+      },
+      {
+        "name": "50 gram",
+        "code": "BECB00-005",
+        "expiredDate": "Jul'27"
+      },
+      {
+        "name": "100gram",
+        "code": "BECB00-006",
+        "expiredDate": "Jul'27"
+      },
+      {
+        "name": "200 gram",
+        "code": "BECB00-007",
+        "expiredDate": "Jul'27"
+      },
+      {
+        "name": "1000 gram",
+        "code": "BECB00-009",
+        "expiredDate": "Jul'27"
+      }
+    ]
+  },
+  "profile_plt": {
+    "label": "PLT",
+    "subtitle": "PLT \u2014 DIGITAL WEIGHT MEASURER",
+    "unit": "g",
+    "equipment": {
+      "name": "DIGITAL WEIGHT MEASURER",
+      "code": "BEDB13-327",
+      "maker": "A&D MEASUREMENT",
+      "className": "Ordinary 2nd class",
+      "modelNo": "HR-250AZ",
+      "section": "ME9130",
+      "serialNo": "6A7702693",
+      "location": "A-FP1518-ENG-TB",
+      "calibrationOn": "2025-12-24",
+      "temperature": 25,
+      "humidity": 59,
+      "calibrationPeriod": 12
+    },
+    "checks": {
+      "physical": "Good",
+      "display": "Good",
+      "operation": "Good",
+      "damage": "Good",
+      "function": "Good"
+    },
+    "linearity": [
+      {
+        "standard": 2.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 10.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 50.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 1.0
+        }
+      },
+      {
+        "standard": 200.0,
+        "toleranceRule": {
+          "type": "percent",
+          "value": 0.5
+        }
+      }
+    ],
+    "repeatability": {
+      "standards": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "toleranceRule": {
+        "type": "percent",
+        "value": 0.7
+      }
+    },
+    "calibrationStandards": [
+      {
+        "name": "2 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "10 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "50 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "100gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      },
+      {
+        "name": "200 gram",
+        "code": "BEFB00-020",
+        "expiredDate": "Dec'26"
+      }
+    ]
+  }
+};
+
+  const todayISO = () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const deepCopy = (value) => JSON.parse(JSON.stringify(value));
+  const sanitizeFilename = (text) => String(text || 'record').replace(/[\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').replace(/^_+|_+$/g, '') || 'record';
+
+  function normalizeNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function numberFromElement(element) { return element ? normalizeNumber(element.value) : null; }
+  function numberValue(id) { return numberFromElement($(id)); }
+
+  function formatNumber(value, decimals = 4) {
+    if (!Number.isFinite(value)) return '';
+    const fixed = Number(value).toFixed(decimals);
+    return String(Number(fixed));
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function storageGet(key) { try { return window.localStorage.getItem(key); } catch (error) { return null; } }
+  function storageSet(key, value) { try { window.localStorage.setItem(key, value); return true; } catch (error) { return false; } }
+  function storageRemove(key) { try { window.localStorage.removeItem(key); return true; } catch (error) { return false; } }
+
+  let stampImages = { prepared: '', confirmed: '' };
+  let stampImageNames = { prepared: '', confirmed: '' };
+  let stampApplied = { prepared: false, confirmed: false };
+  let stampAppliedAt = { prepared: '', confirmed: '' };
+  let eccentricManualCache = [null, null, null, null, null];
+  let toastTimer = null;
+  let saveTimer = null;
+  let suppressAutoSave = false;
+  let activeProfileKey = DEFAULT_PROFILE;
+
+  function getProfile(key) { return PROFILES[key] || PROFILES[DEFAULT_PROFILE] || Object.values(PROFILES)[0]; }
+  function getCurrentProfileKey() { return PROFILES[activeProfileKey] ? activeProfileKey : DEFAULT_PROFILE; }
+
+  function toleranceFromRule(rule, standard) {
+    if (!rule || typeof rule !== 'object') return null;
+    if (rule.type === 'percent') {
+      const percent = normalizeNumber(rule.value);
+      return Number.isFinite(percent) && Number.isFinite(standard) ? Math.abs(standard) * percent / 100 : null;
+    }
+    if (rule.type === 'fixed') {
+      const value = normalizeNumber(rule.value);
+      return Number.isFinite(value) ? Math.abs(value) : null;
+    }
+    return null;
+  }
+
+  function cloneRule(rule) {
+    if (rule && typeof rule === 'object') return deepCopy(rule);
+    return { type: 'fixed', value: null };
+  }
+
+  function ruleToDataset(rule) {
+    try { return JSON.stringify(rule || { type: 'fixed', value: null }); } catch (error) { return '{"type":"fixed","value":null}'; }
+  }
+
+  function ruleFromDataset(field) {
+    if (!field) return { type: 'fixed', value: null };
+    try { return JSON.parse(field.dataset.rule || '{"type":"fixed","value":null}'); } catch (error) { return { type: 'fixed', value: null }; }
+  }
+
+  function makeProfileData(key, options = {}) {
+    const profileKey = PROFILES[key] ? key : DEFAULT_PROFILE;
+    const profile = getProfile(profileKey);
+    const blankActuals = options.blankActuals !== false;
+    const linearity = profile.linearity.map((row) => {
+      const standard = normalizeNumber(row.standard);
+      const rule = cloneRule(row.toleranceRule);
+      return {
+        standard,
+        actual: blankActuals ? [null, null, null] : [null, null, null],
+        tolerance: toleranceFromRule(rule, standard),
+        toleranceAuto: true,
+        toleranceRule: rule
+      };
+    });
+    const repStandards = Array.isArray(profile.repeatability?.standards) ? profile.repeatability.standards.slice(0, REPEATABILITY_READINGS) : [];
+    while (repStandards.length < REPEATABILITY_READINGS) repStandards.push(repStandards.length ? repStandards[repStandards.length - 1] : null);
+    const repeatRule = cloneRule(profile.repeatability?.toleranceRule);
+    const repeatability = {
+      rows: repStandards.map((standard) => ({ standard: normalizeNumber(standard), actual: null })),
+      tolerance: toleranceFromRule(repeatRule, normalizeNumber(repStandards[0])),
+      toleranceAuto: true,
+      toleranceRule: repeatRule
+    };
+    return {
+      version: 3,
+      documentType: 'Digital Weight Measure Verification Record',
+      profile: profileKey,
+      unit: profile.unit || 'g',
+      equipment: deepCopy(profile.equipment || {}),
+      appearance: deepCopy(profile.checks || { physical: 'Good', display: 'Good', operation: 'Good', damage: 'Good', function: 'Good' }),
+      linearity,
+      repeatability,
+      eccentric: {
+        linked: true,
+        standard: repeatability.rows[0]?.standard ?? null,
+        values: [null, null, null, null, null],
+        manualValues: [null, null, null, null, null],
+        tolerance: repeatability.tolerance
+      },
+      calibrationStandards: deepCopy(profile.calibrationStandards || [{ name: '', code: '', expiredDate: '' }]),
+      stamps: {
+        prepared: { name: '', section: '', date: todayISO(), image: '', imageName: '', applied: false, appliedAt: '' },
+        confirmed: { name: '', section: '', date: todayISO(), image: '', imageName: '', applied: false, appliedAt: '' }
+      }
+    };
+  }
+
+  let defaultData = makeProfileData(DEFAULT_PROFILE);
+
+  function setInputValue(id, value) {
+    const element = $(id);
+    if (!element) return;
+    element.value = value === null || value === undefined ? '' : String(value);
+  }
+
+  function showToast(message) {
+    const toast = $('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+
+  function setSaveIndicator(message) { $('saveIndicator').textContent = message; }
+
+  function setStatusCell(cell, status) {
+    cell.textContent = status;
+    cell.classList.remove('status-pass', 'status-fail', 'status-pending');
+    cell.classList.add(status === 'PASS' ? 'status-pass' : status === 'FAIL' ? 'status-fail' : 'status-pending');
+    return status;
+  }
+
+  function updateSelectAppearance(select) {
+    select.classList.remove('select-good', 'select-bad', 'select-empty');
+    if (select.value === 'Good') select.classList.add('select-good');
+    else if (select.value === 'No Good') select.classList.add('select-bad');
+    else select.classList.add('select-empty');
+  }
+
+  function updateUnitLabels(unit) {
+    const label = unit || 'g';
+    document.querySelectorAll('[data-unit-text]').forEach((element) => { element.textContent = label; });
+  }
+
+  function setProfileSubtitle(profileKey) {
+    const profile = getProfile(profileKey);
+    $('recordSubtitle').textContent = profile.subtitle || 'Digital Weight Measure';
+  }
+
+  function updateLinearityRowControls() {
+    const rows = Array.from($('linearityBody').querySelectorAll('[data-linearity-row]'));
+    rows.forEach((row, index) => {
+      row.dataset.linearityRow = String(index);
+      const button = row.querySelector('[data-remove-linearity-row]');
+      if (button) {
+        button.hidden = rows.length <= 1;
+        button.setAttribute('aria-label', `Remove measuring point ${index + 1}`);
+      }
+    });
+  }
+
+  function normalizeLinearityRow(row = {}, fallbackRule = null) {
+    const source = row && typeof row === 'object' ? row : {};
+    const standard = normalizeNumber(source.standard);
+    const rule = cloneRule(source.toleranceRule || fallbackRule || { type: 'fixed', value: source.tolerance ?? null });
+    let tolerance = normalizeNumber(source.tolerance);
+    if (!Number.isFinite(tolerance)) tolerance = toleranceFromRule(rule, standard);
+    const actual = Array.isArray(source.actual) ? source.actual.slice(0, 3).map(normalizeNumber) : [null, null, null];
+    while (actual.length < 3) actual.push(null);
+    return {
+      standard,
+      actual,
+      tolerance,
+      toleranceAuto: source.toleranceAuto === false ? false : true,
+      toleranceRule: rule
+    };
+  }
+
+  function createLinearityRow(rowData = {}, focusStandard = false) {
+    const body = $('linearityBody');
+    const row = document.createElement('tr');
+    row.dataset.linearityRow = String(body.querySelectorAll('[data-linearity-row]').length);
+    const normalized = normalizeLinearityRow(rowData);
+    row.innerHTML = `
+      <td class="linearity-standard-cell">
+        <input type="number" step="any" data-linearity-field="standard" aria-label="Linearity standard value">
+        <button class="standard-row-remove screen-only" type="button" data-remove-linearity-row aria-label="Remove measuring point">&times;</button>
+      </td>
+      <td><input type="number" step="any" data-linearity-field="actual" data-reading="0" aria-label="Linearity actual value 1"></td>
+      <td><input type="number" step="any" data-linearity-field="actual" data-reading="1" aria-label="Linearity actual value 2"></td>
+      <td><input type="number" step="any" data-linearity-field="actual" data-reading="2" aria-label="Linearity actual value 3"></td>
+      <td class="computed-cell" data-linearity-computed="average"></td>
+      <td class="computed-cell" data-linearity-computed="difference"></td>
+      <td class="computed-cell" data-linearity-computed="min"></td>
+      <td><input class="tolerance-input" type="number" step="any" min="0" data-linearity-field="tolerance" aria-label="Linearity maximum tolerance"></td>
+      <td class="judgment status-pending" data-linearity-computed="judgment">PENDING</td>`;
+    row.querySelector('[data-linearity-field="standard"]').value = normalized.standard ?? '';
+    row.querySelectorAll('[data-linearity-field="actual"]').forEach((input, index) => { input.value = normalized.actual[index] ?? ''; });
+    const toleranceField = row.querySelector('[data-linearity-field="tolerance"]');
+    toleranceField.value = Number.isFinite(normalized.tolerance) ? formatNumber(normalized.tolerance) : '';
+    toleranceField.dataset.auto = normalized.toleranceAuto ? 'true' : 'false';
+    toleranceField.dataset.rule = ruleToDataset(normalized.toleranceRule);
+    body.appendChild(row);
+    updateLinearityRowControls();
+    if (focusStandard) row.querySelector('[data-linearity-field="standard"]').focus();
+    return row;
+  }
+
+  function renderLinearityRows(rows) {
+    const body = $('linearityBody');
+    body.innerHTML = '';
+    const list = Array.isArray(rows) && rows.length ? rows.slice(0, MAX_LINEARITY_ROWS) : [{ standard: null, actual: [null, null, null], tolerance: null }];
+    list.forEach((row) => createLinearityRow(row));
+    updateLinearityRowControls();
+  }
+
+  function getLinearityRows() {
+    return Array.from($('linearityBody').querySelectorAll('[data-linearity-row]')).map((row) => {
+      const standard = numberFromElement(row.querySelector('[data-linearity-field="standard"]'));
+      const toleranceField = row.querySelector('[data-linearity-field="tolerance"]');
+      return {
+        standard,
+        actual: Array.from(row.querySelectorAll('[data-linearity-field="actual"]')).map(numberFromElement),
+        tolerance: numberFromElement(toleranceField),
+        toleranceAuto: toleranceField.dataset.auto === 'true',
+        toleranceRule: ruleFromDataset(toleranceField)
+      };
+    });
+  }
+
+  function addLinearityRow() {
+    if ($('linearityBody').querySelectorAll('[data-linearity-row]').length >= MAX_LINEARITY_ROWS) {
+      showToast(`A maximum of ${MAX_LINEARITY_ROWS} measuring points is allowed.`);
+      return;
+    }
+    const profile = getProfile(getCurrentProfileKey());
+    const fallback = profile.linearity?.[profile.linearity.length - 1]?.toleranceRule || { type: 'fixed', value: null };
+    createLinearityRow({ toleranceRule: fallback, toleranceAuto: true }, true);
+    calculateAll();
+    autoSaveNow();
+    showToast('Measuring point added.');
+  }
+
+  function removeLinearityRow(button) {
+    const rows = $('linearityBody').querySelectorAll('[data-linearity-row]');
+    if (rows.length <= 1) {
+      showToast('At least one measuring point must remain.');
+      return;
+    }
+    const row = button.closest('[data-linearity-row]');
+    if (row) row.remove();
+    updateLinearityRowControls();
+    calculateAll();
+    autoSaveNow();
+    showToast('Measuring point removed.');
+  }
+
+  function renderRepeatabilityRows(rows = [], repeatability = {}) {
+    const body = $('repeatabilityBody');
+    body.innerHTML = '';
+    const normalizedRows = Array.isArray(rows) ? rows.slice(0, REPEATABILITY_READINGS) : [];
+    while (normalizedRows.length < REPEATABILITY_READINGS) normalizedRows.push({ standard: null, actual: null });
+    for (let i = 0; i < REPEATABILITY_READINGS; i += 1) {
+      const source = normalizedRows[i] || {};
+      const row = document.createElement('tr');
+      const toleranceCells = i === 0 ? `
+        <td class="computed-cell" id="repMin" rowspan="${REPEATABILITY_READINGS}"></td>
+        <td rowspan="${REPEATABILITY_READINGS}"><input class="tolerance-input" id="repTolerance" type="number" step="any" min="0" aria-label="Repeatability maximum tolerance"></td>` : '';
+      row.innerHTML = `
+        <td><input id="repStandard${i}" type="number" step="any" aria-label="Repeatability standard ${i + 1}"></td>
+        <td><input id="repActual${i}" type="number" step="any" aria-label="Repeatability actual value ${i + 1}"></td>
+        <td class="computed-cell" id="repDifference${i}"></td>
+        ${toleranceCells}
+        <td class="judgment status-pending" id="repJudgment${i}">PENDING</td>`;
+      body.appendChild(row);
+      setInputValue(`repStandard${i}`, normalizeNumber(source.standard));
+      setInputValue(`repActual${i}`, normalizeNumber(source.actual));
+    }
+    const toleranceField = $('repTolerance');
+    const rule = cloneRule(repeatability.toleranceRule || getProfile(getCurrentProfileKey()).repeatability?.toleranceRule || { type: 'fixed', value: repeatability.tolerance ?? null });
+    let tolerance = normalizeNumber(repeatability.tolerance);
+    if (!Number.isFinite(tolerance)) tolerance = toleranceFromRule(rule, numberValue('repStandard0'));
+    toleranceField.value = Number.isFinite(tolerance) ? formatNumber(tolerance) : '';
+    toleranceField.dataset.auto = repeatability.toleranceAuto === false ? 'false' : 'true';
+    toleranceField.dataset.rule = ruleToDataset(rule);
+  }
+
+  function normalizeCalibrationStandard(row) {
+    const source = row && typeof row === 'object' ? row : {};
+    return {
+      name: source.name === null || source.name === undefined ? '' : String(source.name),
+      code: source.code === null || source.code === undefined ? '' : String(source.code),
+      expiredDate: source.expiredDate === null || source.expiredDate === undefined ? '' : String(source.expiredDate)
+    };
+  }
+
+  function updateCalibrationStandardRowControls() {
+    const rows = Array.from($('calibrationStandardsBody').querySelectorAll('tr'));
+    rows.forEach((row, index) => {
+      const button = row.querySelector('[data-remove-standard-row]');
+      if (!button) return;
+      button.hidden = rows.length <= 1;
+      button.setAttribute('aria-label', `Remove calibration standard or master equipment row ${index + 1}`);
+      button.title = 'Remove this row';
+    });
+  }
+
+  function createCalibrationStandardRow(data = {}, focusName = false) {
+    const body = $('calibrationStandardsBody');
+    const normalized = normalizeCalibrationStandard(data);
+    const row = document.createElement('tr');
+    row.className = 'standard-entry-row';
+    row.innerHTML = `
+      <td class="standard-name-cell">
+        <input type="text" data-standard-field="name" aria-label="Calibration standard or master equipment name">
+        <button class="standard-row-remove screen-only" type="button" data-remove-standard-row aria-label="Remove row">&times;</button>
+      </td>
+      <td><input type="text" data-standard-field="code" aria-label="Calibration standard or master equipment code"></td>
+      <td><input type="text" data-standard-field="expiredDate" placeholder="e.g. DEC'26" aria-label="Calibration standard or master equipment expired date"></td>`;
+    row.querySelector('[data-standard-field="name"]').value = normalized.name;
+    row.querySelector('[data-standard-field="code"]').value = normalized.code;
+    row.querySelector('[data-standard-field="expiredDate"]').value = normalized.expiredDate;
+    body.appendChild(row);
+    updateCalibrationStandardRowControls();
+    if (focusName) row.querySelector('[data-standard-field="name"]').focus();
+    return row;
+  }
+
+  function setCalibrationStandardRows(rows) {
+    const body = $('calibrationStandardsBody');
+    body.innerHTML = '';
+    const validRows = Array.isArray(rows) && rows.length ? rows.slice(0, MAX_STANDARD_ROWS) : [{}];
+    validRows.forEach((row) => createCalibrationStandardRow(row));
+    updateCalibrationStandardRowControls();
+  }
+
+  function getCalibrationStandardRows() {
+    return Array.from($('calibrationStandardsBody').querySelectorAll('tr')).map((row) => ({
+      name: row.querySelector('[data-standard-field="name"]').value,
+      code: row.querySelector('[data-standard-field="code"]').value,
+      expiredDate: row.querySelector('[data-standard-field="expiredDate"]').value
+    }));
+  }
+
+  function addCalibrationStandardRow() {
+    const body = $('calibrationStandardsBody');
+    if (body.querySelectorAll('tr').length >= MAX_STANDARD_ROWS) {
+      showToast(`A maximum of ${MAX_STANDARD_ROWS} master equipment rows is allowed.`);
+      return;
+    }
+    createCalibrationStandardRow({}, true);
+    autoSaveNow();
+    showToast('Master equipment row added.');
+  }
+
+  function removeCalibrationStandardRow(button) {
+    const body = $('calibrationStandardsBody');
+    const rows = body.querySelectorAll('tr');
+    if (rows.length <= 1) {
+      showToast('At least one calibration standard row must remain.');
+      return;
+    }
+    const row = button.closest('tr');
+    if (row) row.remove();
+    updateCalibrationStandardRowControls();
+    autoSaveNow();
+    showToast('Master equipment row removed.');
+  }
+
+  function addMonthsISO(dateString, months) {
+    if (!dateString || !Number.isFinite(months)) return '';
+    const parts = dateString.split('-').map(Number);
+    if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return '';
+    const [year, month, day] = parts;
+    const targetStart = new Date(year, month - 1 + months, 1);
+    const lastDay = new Date(targetStart.getFullYear(), targetStart.getMonth() + 1, 0).getDate();
+    const target = new Date(targetStart.getFullYear(), targetStart.getMonth(), Math.min(day, lastDay));
+    const local = new Date(target.getTime() - target.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  function displayStampDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function updateNextCalibration() {
+    const months = numberValue('calibrationPeriod');
+    $('nextCalibration').value = addMonthsISO($('calibrationOn').value, months);
+  }
+
+  function maybeRecalculateLinearityTolerance(row) {
+    const standard = numberFromElement(row.querySelector('[data-linearity-field="standard"]'));
+    const toleranceField = row.querySelector('[data-linearity-field="tolerance"]');
+    if (toleranceField.dataset.auto === 'true') {
+      const value = toleranceFromRule(ruleFromDataset(toleranceField), standard);
+      toleranceField.value = Number.isFinite(value) ? formatNumber(value) : '';
+    }
+  }
+
+  function maybeRecalculateRepeatabilityTolerance() {
+    const toleranceField = $('repTolerance');
+    if (toleranceField && toleranceField.dataset.auto === 'true') {
+      const value = toleranceFromRule(ruleFromDataset(toleranceField), numberValue('repStandard0'));
+      toleranceField.value = Number.isFinite(value) ? formatNumber(value) : '';
+    }
+  }
+
+  function calculateLinearity() {
+    const statuses = [];
+    $('linearityBody').querySelectorAll('[data-linearity-row]').forEach((row) => {
+      maybeRecalculateLinearityTolerance(row);
+      const standard = numberFromElement(row.querySelector('[data-linearity-field="standard"]'));
+      const readings = Array.from(row.querySelectorAll('[data-linearity-field="actual"]')).map(numberFromElement);
+      const tolerance = numberFromElement(row.querySelector('[data-linearity-field="tolerance"]'));
+      row.querySelector('[data-linearity-computed="min"]').textContent = Number.isFinite(tolerance) ? formatNumber(-Math.abs(tolerance)) : '';
+      const judgmentCell = row.querySelector('[data-linearity-computed="judgment"]');
+
+      if (Number.isFinite(standard) && readings.every(Number.isFinite) && Number.isFinite(tolerance)) {
+        const average = readings.reduce((sum, value) => sum + value, 0) / readings.length;
+        const difference = average - standard;
+        row.querySelector('[data-linearity-computed="average"]').textContent = formatNumber(average);
+        row.querySelector('[data-linearity-computed="difference"]').textContent = formatNumber(difference);
+        const status = difference >= -Math.abs(tolerance) && difference <= Math.abs(tolerance) ? 'PASS' : 'FAIL';
+        statuses.push(setStatusCell(judgmentCell, status));
+      } else {
+        row.querySelector('[data-linearity-computed="average"]').textContent = '';
+        row.querySelector('[data-linearity-computed="difference"]').textContent = '';
+        statuses.push(setStatusCell(judgmentCell, 'PENDING'));
+      }
+    });
+    return statuses;
+  }
+
+  function calculateRepeatability() {
+    maybeRecalculateRepeatabilityTolerance();
+    const tolerance = numberValue('repTolerance');
+    $('repMin').textContent = Number.isFinite(tolerance) ? formatNumber(-Math.abs(tolerance)) : '';
+    const statuses = [];
+    const differences = [];
+    for (let i = 0; i < REPEATABILITY_READINGS; i += 1) {
+      const standard = numberValue(`repStandard${i}`);
+      const actual = numberValue(`repActual${i}`);
+      if (Number.isFinite(standard) && Number.isFinite(actual)) {
+        const difference = actual - standard;
+        differences.push(difference);
+        $('repDifference' + i).textContent = formatNumber(difference);
+        if (Number.isFinite(tolerance)) {
+          const status = difference >= -Math.abs(tolerance) && difference <= Math.abs(tolerance) ? 'PASS' : 'FAIL';
+          statuses.push(setStatusCell($('repJudgment' + i), status));
+        } else {
+          statuses.push(setStatusCell($('repJudgment' + i), 'PENDING'));
+        }
+      } else {
+        differences.push(null);
+        $('repDifference' + i).textContent = '';
+        statuses.push(setStatusCell($('repJudgment' + i), 'PENDING'));
+      }
+    }
+    return { statuses, differences };
+  }
+
+  function setEccentricLinkedState(linked, repeatabilityDifferences) {
+    const fields = ECC_IDS.map($);
+    const standardField = $('eccStandard');
+    const toleranceField = $('eccTolerance');
+    if (linked) {
+      fields.forEach((field, index) => {
+        field.readOnly = true;
+        field.value = Number.isFinite(repeatabilityDifferences[index]) ? formatNumber(repeatabilityDifferences[index]) : '';
+      });
+      standardField.readOnly = true;
+      standardField.value = $('repStandard0').value;
+      toleranceField.readOnly = true;
+      toleranceField.value = $('repTolerance').value;
+    } else {
+      fields.forEach((field, index) => {
+        field.readOnly = false;
+        if (field.value === '' && Number.isFinite(eccentricManualCache[index])) field.value = formatNumber(eccentricManualCache[index]);
+      });
+      standardField.readOnly = false;
+      toleranceField.readOnly = false;
+    }
+  }
+
+  function calculateEccentric(repeatabilityDifferences) {
+    const linked = $('linkEccentric').checked;
+    setEccentricLinkedState(linked, repeatabilityDifferences);
+    const tolerance = numberValue('eccTolerance');
+    const values = ECC_IDS.map(numberValue);
+    $('eccMin').textContent = Number.isFinite(tolerance) ? formatNumber(-Math.abs(tolerance)) : '';
+    if (values.every(Number.isFinite) && Number.isFinite(tolerance)) {
+      const pass = values.every((value) => value >= -Math.abs(tolerance) && value <= Math.abs(tolerance));
+      return setStatusCell($('eccJudgment'), pass ? 'PASS' : 'FAIL');
+    }
+    return setStatusCell($('eccJudgment'), 'PENDING');
+  }
+
+  function calculateOverall(linearityStatuses, repeatabilityStatuses, eccentricStatus) {
+    const checks = ['appearancePhysical', 'appearanceDisplay', 'appearanceOperation', 'appearanceDamage', 'functionCheck'].map((id) => $(id).value);
+    const anyNoGood = checks.includes('No Good');
+    const allGood = checks.every((value) => value === 'Good');
+    const statuses = [...linearityStatuses, ...repeatabilityStatuses, eccentricStatus];
+    const anyFail = statuses.includes('FAIL');
+    const allPass = statuses.length > 0 && statuses.every((status) => status === 'PASS');
+    const total = anyNoGood || anyFail ? 'FAIL' : allGood && allPass ? 'PASS' : 'PENDING';
+    setStatusCell($('totalJudgment'), total);
+  }
+
+  function calculateAll() {
+    updateNextCalibration();
+    document.querySelectorAll('.condition-table select').forEach(updateSelectAppearance);
+    const linearityStatuses = calculateLinearity();
+    const repeatability = calculateRepeatability();
+    const eccentricStatus = calculateEccentric(repeatability.differences);
+    calculateOverall(linearityStatuses, repeatability.statuses, eccentricStatus);
+  }
+
+  function roleLabel(role) { return role === 'prepared' ? 'PREPARED' : 'CONFIRMED'; }
+
+  function renderStamp(role) {
+    const preview = $(`${role}StampPreview`);
+    const mini = $(role === 'prepared' ? 'miniPrepared' : 'miniConfirmed');
+    const name = $(`${role}Name`).value.trim();
+    const section = $(`${role}Section`).value.trim();
+    const date = $(`${role}Date`).value;
+    const label = roleLabel(role);
+    if (!stampApplied[role]) {
+      preview.className = 'stamp-preview empty';
+      preview.textContent = role === 'prepared' ? 'Prepared stamp not applied' : 'Confirmation stamp not applied';
+      mini.className = 'mini-stamp';
+      mini.textContent = 'Not stamped';
+      return;
+    }
+    preview.className = 'stamp-preview';
+    if (stampImages[role]) {
+      preview.innerHTML = `
+        <img class="uploaded-stamp" src="${stampImages[role]}" alt="${label.toLowerCase()} stamp image">
+        <div class="uploaded-caption">${escapeHtml(label)}<br>${escapeHtml(name)}${section ? `<br>${escapeHtml(section)}` : ''}<br>${escapeHtml(displayStampDate(date))}</div>`;
+    } else {
+      preview.innerHTML = `
+        <div class="generated-stamp">
+          <div class="stamp-role">${escapeHtml(label)}</div>
+          <div class="stamp-name">${escapeHtml(name)}</div>
+          <div class="stamp-meta">${section ? `${escapeHtml(section)}<br>` : ''}${escapeHtml(displayStampDate(date))}</div>
+        </div>`;
+    }
+    mini.className = 'mini-stamp applied';
+    mini.innerHTML = `${escapeHtml(label)}<br>${escapeHtml(name)}<br>${escapeHtml(displayStampDate(date))}`;
+  }
+
+  function invalidateStamp(role) {
+    if (stampApplied[role]) {
+      stampApplied[role] = false;
+      stampAppliedAt[role] = '';
+      renderStamp(role);
+      showToast(`${roleLabel(role)} stamp was removed because its details changed.`);
+    }
+  }
+
+  function applyStamp(role) {
+    const name = $(`${role}Name`).value.trim();
+    const date = $(`${role}Date`).value;
+    if (!name || !date) {
+      showToast('Enter the name and date before applying the stamp.');
+      $(`${role}${!name ? 'Name' : 'Date'}`).focus();
+      return;
+    }
+    stampApplied[role] = true;
+    stampAppliedAt[role] = new Date().toISOString();
+    renderStamp(role);
+    autoSaveNow();
+    showToast(`${roleLabel(role)} stamp applied.`);
+  }
+
+  function removeStamp(role) {
+    stampApplied[role] = false;
+    stampAppliedAt[role] = '';
+    renderStamp(role);
+    autoSaveNow();
+    showToast(`${roleLabel(role)} stamp removed.`);
+  }
+
+  function clearStampImage(role) {
+    stampImages[role] = '';
+    stampImageNames[role] = '';
+    $(`${role}ImageInput`).value = '';
+    $(`${role}ImageName`).textContent = 'No image selected — a generated stamp will be used.';
+    invalidateStamp(role);
+    renderStamp(role);
+    autoSaveNow();
+  }
+
+  async function resizeImageFile(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Unable to read image.'));
+      reader.readAsDataURL(file);
+    });
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Invalid image file.'));
+      img.src = dataUrl;
+    });
+    const maxDimension = 700;
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  }
+
+  async function handleStampImage(role, file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Select a valid image file.'); return; }
+    try {
+      setSaveIndicator('Processing image...');
+      stampImages[role] = await resizeImageFile(file);
+      stampImageNames[role] = file.name;
+      $(`${role}ImageName`).textContent = file.name;
+      invalidateStamp(role);
+      renderStamp(role);
+      autoSaveNow();
+      showToast('Stamp image loaded. Apply the stamp to confirm it.');
+    } catch (error) {
+      showToast(error.message || 'Unable to process the image.');
+    } finally { setSaveIndicator('Saved locally'); }
+  }
+
+  function getFormData() {
+    const repeatRows = [];
+    for (let i = 0; i < REPEATABILITY_READINGS; i += 1) {
+      repeatRows.push({ standard: numberValue(`repStandard${i}`), actual: numberValue(`repActual${i}`) });
+    }
+    const linked = $('linkEccentric').checked;
+    const currentEccValues = ECC_IDS.map(numberValue);
+    if (!linked) eccentricManualCache = currentEccValues.slice();
+    const repeatToleranceField = $('repTolerance');
+    const calibrationStandards = getCalibrationStandardRows();
+    return {
+      version: 3,
+      documentType: 'Digital Weight Measure Verification Record',
+      savedAt: new Date().toISOString(),
+      profile: getCurrentProfileKey(),
+      unit: getProfile(getCurrentProfileKey()).unit || 'g',
+      equipment: {
+        name: $('equipmentName').value,
+        code: $('equipmentCode').value,
+        maker: $('maker').value,
+        className: $('equipmentClass').value,
+        modelNo: $('modelNo').value,
+        section: $('section').value,
+        serialNo: $('serialNo').value,
+        location: $('location').value,
+        calibrationOn: $('calibrationOn').value,
+        nextCalibration: $('nextCalibration').value,
+        temperature: numberValue('temperature'),
+        humidity: numberValue('humidity'),
+        calibrationPeriod: numberValue('calibrationPeriod')
+      },
+      appearance: {
+        physical: $('appearancePhysical').value,
+        display: $('appearanceDisplay').value,
+        operation: $('appearanceOperation').value,
+        damage: $('appearanceDamage').value,
+        function: $('functionCheck').value
+      },
+      linearity: getLinearityRows(),
+      repeatability: {
+        rows: repeatRows,
+        tolerance: numberValue('repTolerance'),
+        toleranceAuto: repeatToleranceField.dataset.auto === 'true',
+        toleranceRule: ruleFromDataset(repeatToleranceField)
+      },
+      eccentric: {
+        linked,
+        standard: numberValue('eccStandard'),
+        values: currentEccValues,
+        manualValues: eccentricManualCache.slice(),
+        tolerance: numberValue('eccTolerance')
+      },
+      calibrationStandards,
+      calibrationStandard: calibrationStandards[0] || { name: '', code: '', expiredDate: '' },
+      stamps: {
+        prepared: {
+          name: $('preparedName').value,
+          section: $('preparedSection').value,
+          date: $('preparedDate').value,
+          image: stampImages.prepared,
+          imageName: stampImageNames.prepared,
+          applied: stampApplied.prepared,
+          appliedAt: stampAppliedAt.prepared
+        },
+        confirmed: {
+          name: $('confirmedName').value,
+          section: $('confirmedSection').value,
+          date: $('confirmedDate').value,
+          image: stampImages.confirmed,
+          imageName: stampImageNames.confirmed,
+          applied: stampApplied.confirmed,
+          appliedAt: stampAppliedAt.confirmed
+        }
+      },
+      calculated: { totalJudgment: $('totalJudgment').textContent }
+    };
+  }
+
+  function normalizeRepeatability(source, profileKey) {
+    const profile = getProfile(profileKey);
+    const profileRule = cloneRule(profile.repeatability?.toleranceRule);
+    const repeat = source && typeof source === 'object' ? source : {};
+    let rows = Array.isArray(repeat.rows) ? repeat.rows.map((row) => ({ standard: normalizeNumber(row.standard), actual: normalizeNumber(row.actual) })) : [];
+    if (!rows.length && Array.isArray(profile.repeatability?.standards)) rows = profile.repeatability.standards.map((standard) => ({ standard: normalizeNumber(standard), actual: null }));
+    while (rows.length < REPEATABILITY_READINGS) rows.push({ standard: rows.length ? rows[rows.length - 1].standard : null, actual: null });
+    rows = rows.slice(0, REPEATABILITY_READINGS);
+    const rule = cloneRule(repeat.toleranceRule || profileRule || { type: 'fixed', value: repeat.tolerance ?? null });
+    let tolerance = normalizeNumber(repeat.tolerance);
+    if (!Number.isFinite(tolerance)) tolerance = toleranceFromRule(rule, rows[0]?.standard);
+    return { rows, tolerance, toleranceAuto: repeat.toleranceAuto === false ? false : true, toleranceRule: rule };
+  }
+
+  function mergeWithDefaults(data) {
+    const incoming = data && typeof data === 'object' ? deepCopy(data) : {};
+    const profileKey = PROFILES[incoming.profile] ? incoming.profile : DEFAULT_PROFILE;
+    const base = makeProfileData(profileKey);
+    if (!Array.isArray(incoming.calibrationStandards)) {
+      incoming.calibrationStandards = incoming.calibrationStandard && typeof incoming.calibrationStandard === 'object'
+        ? [incoming.calibrationStandard]
+        : base.calibrationStandards;
+    }
+    const mergeObject = (target, source) => {
+      if (!source || typeof source !== 'object') return target;
+      Object.keys(source).forEach((key) => {
+        if (Array.isArray(source[key])) target[key] = deepCopy(source[key]);
+        else if (source[key] && typeof source[key] === 'object') {
+          if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) target[key] = {};
+          mergeObject(target[key], source[key]);
+        } else target[key] = source[key];
+      });
+      return target;
+    };
+    const merged = mergeObject(base, incoming);
+    merged.profile = profileKey;
+    merged.unit = getProfile(profileKey).unit || merged.unit || 'g';
+    merged.linearity = Array.isArray(merged.linearity) && merged.linearity.length
+      ? merged.linearity.slice(0, MAX_LINEARITY_ROWS).map((row, index) => normalizeLinearityRow(row, getProfile(profileKey).linearity?.[index]?.toleranceRule))
+      : makeProfileData(profileKey).linearity;
+    merged.repeatability = normalizeRepeatability(merged.repeatability, profileKey);
+    if (!merged.eccentric || typeof merged.eccentric !== 'object') merged.eccentric = makeProfileData(profileKey).eccentric;
+    if (!Array.isArray(merged.eccentric.values)) merged.eccentric.values = [null, null, null, null, null];
+    if (!Array.isArray(merged.eccentric.manualValues)) merged.eccentric.manualValues = deepCopy(merged.eccentric.values);
+    if (!Array.isArray(merged.calibrationStandards) || !merged.calibrationStandards.length) {
+      merged.calibrationStandards = makeProfileData(profileKey).calibrationStandards;
+    } else {
+      merged.calibrationStandards = merged.calibrationStandards.slice(0, MAX_STANDARD_ROWS).map(normalizeCalibrationStandard);
+    }
+    if (!merged.stamps) merged.stamps = deepCopy(defaultData.stamps);
+    ['prepared', 'confirmed'].forEach((role) => {
+      if (!merged.stamps[role]) merged.stamps[role] = deepCopy(defaultData.stamps[role]);
+      if (!merged.stamps[role].date) merged.stamps[role].date = todayISO();
+    });
+    return merged;
+  }
+
+  function applyData(data) {
+    suppressAutoSave = true;
+    const source = mergeWithDefaults(data);
+    activeProfileKey = source.profile;
+    $('profileSelect').value = source.profile;
+    updateUnitLabels(source.unit);
+    setProfileSubtitle(source.profile);
+    setInputValue('equipmentName', source.equipment.name);
+    setInputValue('equipmentCode', source.equipment.code);
+    setInputValue('maker', source.equipment.maker);
+    setInputValue('equipmentClass', source.equipment.className);
+    setInputValue('modelNo', source.equipment.modelNo);
+    setInputValue('section', source.equipment.section);
+    setInputValue('serialNo', source.equipment.serialNo);
+    setInputValue('location', source.equipment.location);
+    setInputValue('calibrationOn', source.equipment.calibrationOn);
+    setInputValue('temperature', source.equipment.temperature);
+    setInputValue('humidity', source.equipment.humidity);
+    setInputValue('calibrationPeriod', source.equipment.calibrationPeriod);
+    setInputValue('appearancePhysical', source.appearance.physical);
+    setInputValue('appearanceDisplay', source.appearance.display);
+    setInputValue('appearanceOperation', source.appearance.operation);
+    setInputValue('appearanceDamage', source.appearance.damage);
+    setInputValue('functionCheck', source.appearance.function);
+    renderLinearityRows(source.linearity);
+    renderRepeatabilityRows(source.repeatability.rows, source.repeatability);
+    $('linkEccentric').checked = source.eccentric.linked !== false;
+    eccentricManualCache = Array.isArray(source.eccentric.manualValues) ? source.eccentric.manualValues.slice(0, 5).map(normalizeNumber) : [null, null, null, null, null];
+    while (eccentricManualCache.length < 5) eccentricManualCache.push(null);
+    setInputValue('eccStandard', source.eccentric.standard);
+    ECC_IDS.forEach((id, index) => setInputValue(id, source.eccentric.values[index]));
+    setInputValue('eccTolerance', source.eccentric.tolerance);
+    setCalibrationStandardRows(source.calibrationStandards);
+    ['prepared', 'confirmed'].forEach((role) => {
+      const stamp = source.stamps[role];
+      setInputValue(`${role}Name`, stamp.name);
+      setInputValue(`${role}Section`, stamp.section);
+      setInputValue(`${role}Date`, stamp.date || todayISO());
+      stampImages[role] = stamp.image || '';
+      stampImageNames[role] = stamp.imageName || '';
+      stampApplied[role] = Boolean(stamp.applied);
+      stampAppliedAt[role] = stamp.appliedAt || '';
+      $(`${role}ImageName`).textContent = stampImageNames[role] || 'No image selected — a generated stamp will be used.';
+      $(`${role}ImageInput`).value = '';
+      renderStamp(role);
+    });
+    calculateAll();
+    suppressAutoSave = false;
+  }
+
+  function loadSelectedProfile() {
+    const key = $('profileSelect').value;
+    const profile = getProfile(key);
+    if (!window.confirm('Load this sheet profile? Equipment information, measuring points, repeatability setup, eccentric setup and master-equipment rows will be replaced. Stamps will remain.')) {
+      $('profileSelect').value = getCurrentProfileKey();
+      setProfileSubtitle(getCurrentProfileKey());
+      return;
+    }
+    const current = getFormData();
+    const next = makeProfileData(key);
+    // Keep the scanned/master equipment identity while replacing the measuring setup.
+    next.equipment = { ...next.equipment, ...current.equipment };
+    next.stamps = current.stamps;
+    applyData(next);
+    autoSaveNow();
+    showToast(`${profile.label} profile loaded.`);
+  }
+
+  function autoSaveSoon() {
+    if (suppressAutoSave) return;
+    setSaveIndicator('Saving...');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(autoSaveNow, 350);
+  }
+
+  function autoSaveNow() {
+    if (suppressAutoSave) return;
+    const saved = storageSet(STORAGE_KEY, JSON.stringify(getFormData()));
+    setSaveIndicator(saved ? 'Saved locally' : 'Local save unavailable');
+  }
+
+  function exportJson() {
+    calculateAll();
+    const data = getFormData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const code = sanitizeFilename(data.equipment.code || data.profile || 'Digital_Weight_Measure');
+    const date = (data.equipment.calibrationOn || todayISO()).replace(/-/g, '');
+    link.href = url;
+    link.download = `${code}_${date}_Verification_Record.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('JSON record exported.');
+  }
+
+  async function importJsonFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      applyData(data);
+      autoSaveNow();
+      showToast('JSON record imported.');
+    } catch (error) {
+      showToast('Unable to import this JSON file.');
+    } finally { $('jsonFileInput').value = ''; }
+  }
+
+  function resetTemplate() {
+    if (!window.confirm('Reset all entries and stamps to the default 2-500g sheet profile?')) return;
+    storageRemove(STORAGE_KEY);
+    defaultData = makeProfileData(DEFAULT_PROFILE);
+    applyData(deepCopy(defaultData));
+    autoSaveNow();
+    showToast('Default profile restored.');
+  }
+
+  function restoreSavedData() {
+    const saved = storageGet(STORAGE_KEY);
+    if (saved) {
+      try {
+        applyData(JSON.parse(saved));
+        setSaveIndicator('Restored local record');
+        return;
+      } catch (error) { storageRemove(STORAGE_KEY); }
+    }
+    defaultData = makeProfileData(DEFAULT_PROFILE);
+    applyData(deepCopy(defaultData));
+    setSaveIndicator(storageSet(STORAGE_KEY, JSON.stringify(getFormData())) ? 'Template loaded' : 'Template loaded — local save unavailable');
+  }
+
+  function attachEvents() {
+    document.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+      if (target.matches('[data-linearity-field="tolerance"]')) target.dataset.auto = 'false';
+      if (target.id === 'repTolerance') target.dataset.auto = 'false';
+      if (target.matches('[data-linearity-field="standard"]')) {
+        const row = target.closest('[data-linearity-row]');
+        const toleranceField = row?.querySelector('[data-linearity-field="tolerance"]');
+        if (toleranceField?.dataset.auto === 'true') maybeRecalculateLinearityTolerance(row);
+      }
+      if (target.id === 'repStandard0' && $('repTolerance')?.dataset.auto === 'true') maybeRecalculateRepeatabilityTolerance();
+      if (target.id.startsWith('prepared') && !['preparedImageInput'].includes(target.id)) invalidateStamp('prepared');
+      if (target.id.startsWith('confirmed') && !['confirmedImageInput'].includes(target.id)) invalidateStamp('confirmed');
+      calculateAll();
+      autoSaveSoon();
+    });
+
+    document.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+      if (target.id === 'profileSelect') return;
+      if (target.id === 'linkEccentric') {
+        if (target.checked) eccentricManualCache = ECC_IDS.map(numberValue);
+        else ECC_IDS.forEach((id, index) => setInputValue(id, eccentricManualCache[index]));
+        calculateAll();
+        autoSaveSoon();
+      }
+      if (target.id === 'preparedImageInput') handleStampImage('prepared', target.files[0]);
+      if (target.id === 'confirmedImageInput') handleStampImage('confirmed', target.files[0]);
+    });
+
+    $('profileSelect').addEventListener('change', () => { setSaveIndicator('Click Load Profile to apply'); });
+    $('applyProfileButton').addEventListener('click', loadSelectedProfile);
+    $('addLinearityRowButton').addEventListener('click', addLinearityRow);
+    $('linearityBody').addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('[data-remove-linearity-row]');
+      if (button) removeLinearityRow(button);
+    });
+    $('addStandardRowButton').addEventListener('click', addCalibrationStandardRow);
+    $('calibrationStandardsBody').addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('[data-remove-standard-row]');
+      if (button) removeCalibrationStandardRow(button);
+    });
+    document.querySelectorAll('[data-apply-stamp]').forEach((button) => button.addEventListener('click', () => applyStamp(button.dataset.applyStamp)));
+    document.querySelectorAll('[data-remove-stamp]').forEach((button) => button.addEventListener('click', () => removeStamp(button.dataset.removeStamp)));
+    document.querySelectorAll('[data-clear-image]').forEach((button) => button.addEventListener('click', () => clearStampImage(button.dataset.clearImage)));
+    $('resetButton').addEventListener('click', resetTemplate);
+    $('exportButton').addEventListener('click', exportJson);
+    $('importButton').addEventListener('click', () => $('jsonFileInput').click());
+    $('jsonFileInput').addEventListener('change', () => importJsonFile($('jsonFileInput').files[0]));
+    $('printButton').addEventListener('click', () => { calculateAll(); autoSaveNow(); window.print(); });
+    window.addEventListener('beforeprint', calculateAll);
+  }
+
+
+  function applyGridEquipment(equipment = {}) {
+    const setGridValue = (id, value) => {
+      setInputValue(id, value === null || value === undefined ? '' : value);
+    };
+
+    setGridValue('equipmentName', equipment.name);
+    setGridValue('equipmentCode', equipment.code);
+    setGridValue('maker', equipment.maker);
+    setGridValue('equipmentClass', equipment.className);
+    setGridValue('modelNo', equipment.modelNo);
+    setGridValue('section', equipment.section);
+    setGridValue('serialNo', equipment.serialNo);
+    setGridValue('location', equipment.location);
+    setGridValue('calibrationOn', equipment.calibrationDate);
+    setGridValue('calibrationPeriod', equipment.intervalMonths);
+    calculateAll();
+    autoSaveNow();
+  }
+
+  window.GRID_TEMPLATE_API = {
+    type: 'digital-weight',
+    getData: () => {
+      calculateAll();
+      autoSaveNow();
+      return getFormData();
+    },
+    applyData: (data) => {
+      applyData(deepCopy(data));
+      autoSaveNow();
+      return getFormData();
+    },
+    applyEquipment: (equipment) => {
+      applyGridEquipment(equipment);
+      return getFormData();
+    },
+    getResult: () => $('totalJudgment').textContent,
+    print: () => {
+      calculateAll();
+      autoSaveNow();
+      window.print();
+    }
+  };
+
+  try {
+    window.parent?.postMessage({ type: 'grid-template-ready', template: 'digital-weight' }, '*');
+  } catch (error) {
+    // Parent integration is optional when the form is used standalone.
+  }
+
+  attachEvents();
+  restoreSavedData();
+  calculateAll();
+})();
+</script>
+
+</body>
+</html>

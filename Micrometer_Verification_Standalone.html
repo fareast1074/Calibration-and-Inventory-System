@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Micrometer Verification Record</title>
+<style>
+  :root {
+    --ink: #151515;
+    --line: #303030;
+    --muted: #68717a;
+    --paper: #ffffff;
+    --workspace: #e9edf1;
+    --entry: #fffbd0;
+    --entry-focus: #fff2a3;
+    --computed: #f2f4f6;
+    --tolerance: #dcebf6;
+    --pass-bg: #e7f5e9;
+    --pass-fg: #17652d;
+    --fail-bg: #fde7e6;
+    --fail-fg: #a51f1f;
+    --pending-bg: #eef1f4;
+    --pending-fg: #5d6872;
+    --stamp: #bd1e1e;
+    --toolbar: #15212d;
+    --toolbar-2: #223243;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--workspace); }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--workspace);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  button, input, select { font: inherit; }
+
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--toolbar), var(--toolbar-2));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  }
+
+  .toolbar-title {
+    margin-right: auto;
+    min-width: 235px;
+  }
+
+  .toolbar-title strong {
+    display: block;
+    font-size: 14px;
+    letter-spacing: .03em;
+  }
+
+  .toolbar-title span {
+    color: #b9c5d0;
+    font-size: 11px;
+  }
+
+  .profile-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-right: 3px;
+  }
+
+  .profile-control label {
+    color: #c9d4dd;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .profile-control select {
+    width: 215px;
+    min-height: 34px;
+    padding: 6px 28px 6px 8px;
+    border: 1px solid rgba(255,255,255,.28);
+    border-radius: 6px;
+    color: #fff;
+    background: #283a4c;
+    outline: 0;
+  }
+
+  .profile-control select option { color: #111; background: #fff; }
+
+  .tool-button {
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid rgba(255,255,255,.24);
+    border-radius: 6px;
+    color: #fff;
+    background: rgba(255,255,255,.08);
+    cursor: pointer;
+  }
+
+  .tool-button:hover { background: rgba(255,255,255,.17); }
+  .tool-button.primary { background: #b71c1c; border-color: #d45b5b; }
+  .tool-button.primary:hover { background: #cb2525; }
+
+  .save-indicator {
+    min-width: 110px;
+    color: #c8d3dd;
+    text-align: right;
+    font-size: 11px;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 18px auto 36px;
+    padding: 7.5mm;
+    background: var(--paper);
+    box-shadow: 0 12px 36px rgba(27, 38, 49, .18);
+  }
+
+  .document-header {
+    display: grid;
+    grid-template-columns: 30mm minmax(0, 1fr) 52mm;
+    gap: 3mm;
+    align-items: stretch;
+    margin-bottom: 2.5mm;
+  }
+
+  .brand-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 18mm;
+  }
+
+  .brand-block img {
+    display: block;
+    width: 28mm;
+    height: auto;
+  }
+
+  .record-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .record-title h1 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: .035em;
+  }
+
+  .record-title p {
+    margin: 3px 0 0;
+    color: #5e6267;
+    font-size: 9px;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+  }
+
+  .mini-approval {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--line);
+  }
+
+  .mini-box {
+    min-width: 0;
+    min-height: 18mm;
+    border-left: 1px solid var(--line);
+  }
+
+  .mini-box:first-child { border-left: 0; }
+
+  .mini-label {
+    padding: 2px 3px;
+    border-bottom: 1px solid var(--line);
+    font-size: 8px;
+    text-align: center;
+  }
+
+  .mini-stamp {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 13mm;
+    padding: 2px;
+    overflow: hidden;
+    color: #777;
+    text-align: center;
+    font-size: 7px;
+  }
+
+  .mini-stamp.applied {
+    color: var(--stamp);
+    font-weight: 700;
+    line-height: 1.12;
+    text-transform: uppercase;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  th, td {
+    height: 6.5mm;
+    padding: 1mm 1.2mm;
+    border: 1px solid var(--line);
+    vertical-align: middle;
+  }
+
+  th {
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .field-label {
+    font-size: 9px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .section-cell {
+    font-size: 9px;
+    font-weight: 500;
+    text-align: left;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 3mm 0 1.2mm;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .section-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .section-help {
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 400;
+  }
+
+  .table-title {
+    height: 8mm;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .subhead {
+    font-size: 9px;
+    line-height: 1.12;
+  }
+
+  .unit-row th,
+  .unit-row td {
+    height: 5.6mm;
+    padding-top: .7mm;
+    padding-bottom: .7mm;
+    font-size: 9px;
+  }
+
+  .compact th,
+  .compact td { height: 6.2mm; }
+
+  .page input,
+  .page select {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 5.6mm;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 0;
+    color: var(--ink);
+    background: var(--entry);
+    outline: 0;
+    text-align: center;
+  }
+
+  .meta-table input { text-align: left; }
+  #equipmentName { font-size: 9px; }
+  #equipmentClass { font-size: 8px; letter-spacing: -.01em; }
+
+  .page input:focus,
+  .page select:focus {
+    background: var(--entry-focus) !important;
+    box-shadow: inset 0 0 0 2px #d9a900;
+  }
+
+  .page input[readonly] {
+    color: #30363b;
+    background: var(--computed);
+    cursor: default;
+  }
+
+  input[type="number"] { appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; }
+
+  .page select {
+    padding-right: 18px;
+    text-align: center;
+  }
+
+  .select-good { color: var(--pass-fg) !important; background-color: var(--pass-bg) !important; }
+  .select-bad { color: var(--fail-fg) !important; background-color: var(--fail-bg) !important; }
+  .select-empty { color: var(--pending-fg) !important; background-color: var(--entry) !important; }
+
+  .condition-table .check-label {
+    font-size: 8px;
+    line-height: 1.08;
+    text-align: center;
+  }
+
+  .condition-table .environment-value { padding: 0; }
+
+  .condition-table .environment-unit {
+    padding-left: 1px;
+    padding-right: 1px;
+    text-align: center;
+  }
+
+  .diagonal-na {
+    position: relative;
+    padding: 0 !important;
+    background:
+      linear-gradient(to bottom right,
+        transparent calc(50% - .45px),
+        var(--line) calc(50% - .45px),
+        var(--line) calc(50% + .45px),
+        transparent calc(50% + .45px));
+  }
+
+  .diagonal-na::after {
+    content: "N/A";
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    color: #7d8388;
+    font-size: 6px;
+  }
+
+  .computed-cell {
+    padding: 1mm !important;
+    background: var(--computed);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .measurement-table,
+  .summary-table,
+  .master-table-wrap { break-inside: avoid; }
+
+  .measurement-table td { padding: 0; text-align: center; }
+  .measurement-table th { padding: .8mm; }
+
+  .measurement-standard-cell,
+  .master-name-cell { position: relative; }
+
+  .measurement-standard-cell input,
+  .master-name-cell input { padding-right: 28px; }
+
+  .tolerance-cell {
+    padding: .8mm !important;
+    background: var(--tolerance);
+    text-align: center;
+  }
+
+  .tolerance-cell input {
+    min-height: 7mm;
+    color: #1e3545;
+    background: var(--tolerance);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .judgment {
+    padding: .8mm !important;
+    font-weight: 700;
+    letter-spacing: .025em;
+    text-align: center;
+  }
+
+  .status-pass { color: var(--pass-fg); background: var(--pass-bg); }
+  .status-fail { color: var(--fail-fg); background: var(--fail-bg); }
+  .status-pending { color: var(--pending-fg); background: var(--pending-bg); }
+
+  .row-button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    padding: 5px 9px;
+    border: 1px solid #7a8793;
+    border-radius: 5px;
+    color: #24313d;
+    background: #f7f9fb;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  .row-button:hover { background: #eaf0f5; }
+
+  .row-remove {
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid #c75b5b;
+    border-radius: 4px;
+    color: #a51f1f;
+    background: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 18px;
+    transform: translateY(-50%);
+  }
+
+  .row-remove:hover { background: #fde8e7; }
+
+  .master-table-wrap {
+    width: 72%;
+    margin: 3.2mm auto 0;
+  }
+
+  .master-table-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+
+  .master-table-help {
+    color: var(--muted);
+    font-size: 9px;
+  }
+
+  .master-table .table-title {
+    height: 7.2mm;
+    font-weight: 700;
+  }
+
+  .master-table td { padding: 0; }
+
+  .summary-table { margin-top: 3.2mm; }
+  .summary-table td { height: 7.6mm; }
+
+  .summary-label {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .period-wrap {
+    display: grid;
+    grid-template-columns: 22mm 1fr;
+    align-items: center;
+    height: 100%;
+  }
+
+  .period-wrap input { text-align: center; }
+
+  .overall-status {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-align: center;
+  }
+
+  .stamp-section {
+    margin-top: 4mm;
+    padding-top: 2.5mm;
+    border-top: 2px solid var(--line);
+    break-inside: avoid;
+  }
+
+  .stamp-section h2 {
+    margin: 0 0 2mm;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .stamp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+  }
+
+  .stamp-card {
+    display: grid;
+    grid-template-columns: 42mm 1fr;
+    gap: 3mm;
+    min-height: 35mm;
+    padding: 2.5mm;
+    border: 1px solid var(--line);
+  }
+
+  .stamp-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 29mm;
+    padding: 2mm;
+    border: 1px dashed #aeb4ba;
+    overflow: hidden;
+    background: #fff;
+    text-align: center;
+  }
+
+  .stamp-preview.empty {
+    color: #8a9096;
+    font-size: 9px;
+  }
+
+  .generated-stamp {
+    width: 37mm;
+    max-width: 100%;
+    padding: 1.5mm 2mm;
+    border: 1.2mm double var(--stamp);
+    border-radius: 3mm;
+    color: var(--stamp);
+    transform: rotate(-2deg);
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .generated-stamp .stamp-role {
+    padding-bottom: 1mm;
+    border-bottom: .6mm solid var(--stamp);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .08em;
+  }
+
+  .generated-stamp .stamp-name {
+    margin-top: 1.2mm;
+    overflow-wrap: anywhere;
+    font-size: 8px;
+    font-weight: 800;
+  }
+
+  .generated-stamp .stamp-meta {
+    margin-top: .8mm;
+    font-size: 7px;
+    line-height: 1.15;
+  }
+
+  .uploaded-stamp {
+    max-width: 36mm;
+    max-height: 20mm;
+    object-fit: contain;
+  }
+
+  .uploaded-caption {
+    margin-top: 1mm;
+    color: var(--stamp);
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-transform: uppercase;
+  }
+
+  .stamp-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5mm 2mm;
+    align-content: start;
+  }
+
+  .stamp-form label {
+    display: block;
+    min-width: 0;
+    color: #555e68;
+    font-size: 8px;
+  }
+
+  .stamp-form label.full { grid-column: 1 / -1; }
+
+  .stamp-form input {
+    height: 7mm;
+    margin-top: .6mm;
+    border: 1px solid #b9bec4;
+    border-radius: 3px;
+    text-align: left;
+  }
+
+  .stamp-actions {
+    display: flex;
+    gap: 1.5mm;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    margin-top: .4mm;
+  }
+
+  .stamp-button {
+    padding: 1.4mm 2.2mm;
+    border: 1px solid #8d959d;
+    border-radius: 4px;
+    background: #f4f6f8;
+    cursor: pointer;
+    font-size: 8px;
+  }
+
+  .stamp-button.apply {
+    color: #fff;
+    border-color: #9d1717;
+    background: #b71c1c;
+  }
+
+  .stamp-button:hover { filter: brightness(.97); }
+
+  .stamp-file-name {
+    grid-column: 1 / -1;
+    min-height: 11px;
+    color: #747b82;
+    font-size: 7px;
+  }
+
+  .document-note {
+    margin: 2mm 0 0;
+    color: #676e75;
+    font-size: 7px;
+    text-align: right;
+  }
+
+  .toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 2000;
+    max-width: 360px;
+    padding: 10px 14px;
+    border-radius: 7px;
+    color: #fff;
+    background: rgba(25, 33, 41, .94);
+    box-shadow: 0 8px 22px rgba(0,0,0,.22);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0,0,0,0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  @media (max-width: 980px) {
+    .page {
+      width: calc(100% - 20px);
+      min-width: 760px;
+      margin: 10px;
+    }
+
+    body { overflow-x: auto; }
+    .toolbar { min-width: 780px; }
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+
+  @media print {
+    html, body {
+      width: auto;
+      margin: 0;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .toolbar,
+    .screen-only,
+    .toast,
+    .stamp-section { display: none !important; }
+
+    .page {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+
+    .record-title h1 { font-size: 16px; }
+    .document-header { margin-bottom: 2mm; }
+    .section-heading { margin-top: 2.2mm; }
+    .measurement-standard-cell input,
+    .master-name-cell input { padding-right: 4px; }
+
+    .page input,
+    .page select {
+      color: #000 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .page input[readonly] { background: transparent !important; }
+    .page select { padding-right: 4px; }
+
+    .tolerance-cell { background: var(--tolerance) !important; }
+    .tolerance-cell input { background: var(--tolerance) !important; }
+    .status-pass { background: var(--pass-bg) !important; }
+    .status-fail { background: var(--fail-bg) !important; }
+    .status-pending { background: var(--pending-bg) !important; }
+    .select-good { background: var(--pass-bg) !important; }
+    .select-bad { background: var(--fail-bg) !important; }
+
+    .document-note { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar" role="region" aria-label="Document controls">
+    <div class="toolbar-title">
+      <strong>Micrometer Verification Record</strong>
+      <span>Standalone offline form — data stays in this browser unless exported.</span>
+    </div>
+    <div class="profile-control">
+      <label for="profileSelect">Measuring profile</label>
+      <select id="profileSelect" aria-label="Micrometer measuring profile">
+        <option value="newMaster15">1st Class — New Master (2.2–15.2 mm)</option>
+        <option value="secondary10">Secondary / Block Set (0.1–10 mm)</option>
+        <option value="insize25">0–25 mm Range (2.2–25 mm)</option>
+        <option value="custom">Custom / Blank</option>
+      </select>
+      <button class="tool-button" type="button" id="applyProfileButton">Load Profile</button>
+    </div>
+    <button class="tool-button" type="button" id="resetButton">Reset Template</button>
+    <button class="tool-button" type="button" id="importButton">Import JSON</button>
+    <button class="tool-button" type="button" id="exportButton">Export JSON</button>
+    <button class="tool-button primary" type="button" id="printButton">Print / Save PDF</button>
+    <span class="save-indicator" id="saveIndicator">Ready</span>
+    <input class="visually-hidden" type="file" id="jsonFileInput" accept="application/json,.json">
+  </div>
+
+  <main class="page" id="verificationRecord">
+    <header class="document-header">
+      <div class="brand-block">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAl0AAADJAgMAAABkhG/EAAAAAXNSR0ICQMB9xQAAAAxQTFRFAAAA/////ktL/v7+6xX09AAABSVJREFUeNrt3Et64yAMAOC5/1HMQkfQnIcjsLDmFUDC4mEbJ7QjVnGqwG8hg+P2649tyYY/f3yaYDCDGcxgBjOYwQxmsBWbwQxmsNWawQxmsNWawQxmsNWawQxmsNXaLBiQaPsyMKLJskkwV8IorAGDA4z8qrCbKXsOdrPKJsHwC8Fuyp6bynVhtAJsExicsGBMhoW/B27CgjELJpM0ocgmb+KeH60Ei4f3q3/uVO7y0C8DC/EQblf/fwLz8dAtA6MvBbuzXsyFpUODXYPdWWHnfksy2HeB7cXxAjA4Cevv8VNhYRTm3gbDK7B2j/8FzI/CoL8vTILRORgarHR0NnHs3609BINFYO7LwLANG/hy9yismpPPwag99NtglT28NvTAVvksrB3+DhiuDQvVDKqwTpePwDqrBb4NRgWsPF4F1rkoR/bwqbAE6d3xfwyGI19Fwgdg1K7998GKmnKrwrBT+yM70hMw6CXsfTAQywX1YCM70lTYzg8aNYTvhhFPWH2x6C2/E2FIx1abSf6HEOETsFpC6MOw9veQd8GUhIWR2Bkw19pzj65GR/2ktmD4+hTEs0KlaDBW0niF8eBGTBXm4jmn81Ly7g4rRGOSoLcAQ/GWDoNXLxiHBv6p1wiQBO3a/xPnMb+JZcJcDOAVoMNevbjUAe+JYf/BxB8NQFFkr9/DYe4BipweAuqwqI9jiF/yxQ7ym2IpB5kPsZJoMCWgCou7f7pDxjIjKox/mKdXh3kRPgaLn3ydfABeNyg5oZw9CXM9GJyBxSCR5QhLL/NdlSwrOo7rXQ/mRmCFR8IgvYQRGL6ieQTygPiDAZijFowUGCowWa3iKy6HpXrAPgxasFh2Gx8L2UxLGMTXUIHFjI7Aaq6/GurCxCWKMRhYBM+e0lsNplRYXi5cCWPTGxSYnO0jzMmAk7CdrWNEylgCBix9rg7jAcWbXVhICrgIgxTMIy7C2NaXxsgwVtqpfrRvlRy2dWD55IZg3MNgeByrDiMVxl6ThIURWGAzkaekTIKvwIpx3VxYyg6OwESNdmFezM0YLOWnCXN9WHn/0YC5O7D8w/0sjNUCf6RSyv0IjNcug6VLKo8FAkYZBuMwuAHbT8OwCPFyQo59nILtElacYx5f7uH+Mdh+gAUJw1GYOFf5Wg+owmJ+cgVo9Zw7JQ7jVwIV9q3QHE5uBBZaMC+ml1VVE7brsP06zM2H7Rps78CkxysXuN943bGqUrbKw7pOD8LEWO4KLEyBsWsZHoLxgBqs8Gyfubk4AcvjtrbKAywUML4rFnXqz8K0C3xgDz8Bc+MwjmjDeFUpsBzidZgfhYEO6+zhwzB4BkYStlVg/iQMhmHHPfz8zUUJO8pBntx2CRZygQRRdx3YJoLnwqgJo3MwYq9BC6jC4sS598D2i7DQgnUeqWAP5k7BqIRBE+b6MPb18fggWX9AoMCaDwjqMK/AYgnBFFjqBSMCNVjqCs7B4DIM4ydJCneRTlfCRCHwJ7AFDEW4MtdVGL0y4BKMWF8SS4eRxFXplBDiAfG3LDAAcweY432hhHnJ3oprVAlRYUUfGuw1IGvpLZ9LJKp/A3JieQd7HjeIM4P0wZSF4tQrMLrYgrx2eKXn5/O8fx586OQIc3Sx+ds9lEmblLH7p/YMbL9/ah0YXuuPVQc8A7vftLncL2R+/n+hUWRh0MUS//3/PY7BPt4MZjCDrdYMZjCDrdYMZjCDrdYMZjCDrdYMZjCDrdYM9p1gtx7MP9cM9n1gvwDRJfSHXSnAZgAAAABJRU5ErkJggg==" alt="Murata logo">
+      </div>
+      <div class="record-title">
+        <h1>VERIFICATION RECORDS</h1>
+        <p id="recordSubtitle">Micrometer — New Master 2.2 to 15.2 mm</p>
+      </div>
+      <div class="mini-approval" aria-label="Approval stamp summary">
+        <div class="mini-box">
+          <div class="mini-label">Confirm by</div>
+          <div class="mini-stamp" id="miniConfirmed">Not stamped</div>
+        </div>
+        <div class="mini-box">
+          <div class="mini-label">Prepare by</div>
+          <div class="mini-stamp" id="miniPrepared">Not stamped</div>
+        </div>
+      </div>
+    </header>
+
+    <table class="meta-table" aria-label="Equipment information">
+      <colgroup>
+        <col style="width:15%"><col style="width:21%">
+        <col style="width:12%"><col style="width:18%">
+        <col style="width:16%"><col style="width:18%">
+      </colgroup>
+      <tbody>
+        <tr>
+          <th class="field-label">EQUIPMENT NAME:</th>
+          <td colspan="3"><input id="equipmentName" type="text" autocomplete="off"></td>
+          <th class="field-label">MAKER:</th>
+          <td><input id="maker" type="text" autocomplete="off"></td>
+        </tr>
+        <tr>
+          <th class="field-label">EQUIPMENT CODE:</th>
+          <td colspan="3"><input id="equipmentCode" type="text" autocomplete="off"></td>
+          <th class="field-label">CLASS:</th>
+          <td><input id="equipmentClass" type="text" autocomplete="off"></td>
+        </tr>
+        <tr>
+          <th class="field-label">MODEL NO:</th>
+          <td><input id="modelNo" type="text" autocomplete="off"></td>
+          <th class="field-label">SECTION:</th>
+          <td><input id="section" type="text" autocomplete="off"></td>
+          <th class="field-label">NEXT VERIFICATION:</th>
+          <td><input id="nextVerification" type="date" readonly></td>
+        </tr>
+        <tr>
+          <th class="field-label">SERIAL NO:</th>
+          <td><input id="serialNo" type="text" autocomplete="off"></td>
+          <th class="field-label">LOCATION:</th>
+          <td><input id="location" type="text" autocomplete="off"></td>
+          <th class="field-label">VERIFICATION ON:</th>
+          <td><input id="verificationOn" type="date"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="condition-table compact" aria-label="Appearance and function checks">
+      <colgroup>
+        <col style="width:18%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:13%"><col style="width:17%"><col style="width:12%"><col style="width:4%">
+      </colgroup>
+      <tbody>
+        <tr>
+          <th class="section-cell" rowspan="2">1. APPEARANCE</th>
+          <th class="check-label">Physical condition</th>
+          <th class="check-label">Display / Writing</th>
+          <th class="check-label">Operation Button</th>
+          <th class="check-label">Rattle / Loose / Damage</th>
+          <th class="field-label">TEMPERATURE:</th>
+          <td class="environment-value"><input id="temperature" type="number" step="0.1"></td>
+          <td class="environment-unit">°C</td>
+        </tr>
+        <tr>
+          <td><select id="appearancePhysical" aria-label="Physical condition"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceDisplay" aria-label="Display and writing"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceOperation" aria-label="Appearance operation button"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="appearanceDamage" aria-label="Rattle, loose or damage"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <th class="field-label">HUMIDITY:</th>
+          <td class="environment-value"><input id="humidity" type="number" step="0.1"></td>
+          <td class="environment-unit">%</td>
+        </tr>
+        <tr>
+          <th class="section-cell">2. FUNCTION</th>
+          <td class="diagonal-na" aria-label="Not applicable"></td>
+          <td class="diagonal-na" aria-label="Not applicable"></td>
+          <td><select id="functionOperation" aria-label="Function operation button"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td><select id="functionDamage" aria-label="Function rattle, loose or damage"><option value=""></option><option>Good</option><option>No Good</option></select></td>
+          <td colspan="3" class="computed-cell">Functional operating condition</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="section-heading">
+      <span>3. MEASUREMENT</span>
+      <div class="section-actions screen-only">
+        <span class="section-help">Average, B − A and judgement calculate automatically.</span>
+        <button class="row-button" type="button" id="addMeasurementRowButton">+ Add Measuring Point</button>
+      </div>
+    </div>
+
+    <table class="measurement-table" aria-label="Micrometer measuring data">
+      <colgroup>
+        <col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:13%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:12%">
+      </colgroup>
+      <thead>
+        <tr><th class="table-title" colspan="9">MEASURING DATA</th></tr>
+        <tr>
+          <th rowspan="2" class="subhead">STANDARD<br>VALUE (A)</th>
+          <th colspan="3" class="subhead">ACTUAL VALUE (mm)</th>
+          <th rowspan="2" class="subhead">AVERAGE (B)<br><small>(mm)</small></th>
+          <th rowspan="2" class="subhead">B − A<br><small>(mm)</small></th>
+          <th colspan="2" class="subhead">TOLERANCE (mm)</th>
+          <th rowspan="2" class="subhead">JUDGEMENT<br><small>FAIL / PASS</small></th>
+        </tr>
+        <tr class="unit-row">
+          <th>1</th><th>2</th><th>3</th><th>MIN</th><th>MAX</th>
+        </tr>
+      </thead>
+      <tbody id="measurementBody"></tbody>
+    </table>
+
+    <div class="master-table-wrap">
+      <div class="master-table-controls screen-only">
+        <span class="master-table-help">Add one row for each master standard or master equipment used.</span>
+        <button class="row-button" type="button" id="addMasterRowButton">+ Add Master Equipment Row</button>
+      </div>
+      <table class="master-table" aria-label="Master standard used">
+        <colgroup><col style="width:44%"><col style="width:31%"><col style="width:25%"></colgroup>
+        <thead>
+          <tr><th colspan="3" class="table-title">MASTER STANDARD USED</th></tr>
+          <tr><th class="subhead">EQUIPMENT NAME</th><th class="subhead">EQUIPMENT CODE</th><th class="subhead">EXPIRED DATE</th></tr>
+        </thead>
+        <tbody id="masterStandardsBody"></tbody>
+      </table>
+    </div>
+
+    <table class="summary-table" aria-label="Verification period and total judgement">
+      <colgroup><col style="width:28%"><col style="width:30%"><col style="width:25%"><col style="width:17%"></colgroup>
+      <tbody>
+        <tr>
+          <th class="summary-label">VERIFICATION PERIOD:</th>
+          <td>
+            <div class="period-wrap">
+              <input id="verificationPeriod" type="number" min="1" step="1">
+              <span>MONTHS</span>
+            </div>
+          </td>
+          <th class="summary-label">TOTAL JUDGEMENT:</th>
+          <td class="overall-status status-pending" id="totalJudgment">PENDING</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <section class="stamp-section" aria-labelledby="stampTitle">
+      <h2 id="stampTitle">4. VERIFICATION AND APPROVAL STAMPS</h2>
+      <div class="stamp-grid">
+        <article class="stamp-card" data-role="prepared">
+          <div class="stamp-preview empty" id="preparedStampPreview">Prepared stamp not applied</div>
+          <div class="stamp-form screen-only">
+            <label class="full">Prepared by name
+              <input id="preparedName" type="text" autocomplete="off">
+            </label>
+            <label>Section / Position
+              <input id="preparedSection" type="text" autocomplete="off">
+            </label>
+            <label>Date
+              <input id="preparedDate" type="date">
+            </label>
+            <label class="full">Optional stamp or signature image
+              <input id="preparedImageInput" type="file" accept="image/*">
+            </label>
+            <div class="stamp-file-name" id="preparedImageName">No image selected — a generated stamp will be used.</div>
+            <div class="stamp-actions">
+              <button class="stamp-button apply" type="button" data-apply-stamp="prepared">Apply Prepared Stamp</button>
+              <button class="stamp-button" type="button" data-remove-stamp="prepared">Remove</button>
+              <button class="stamp-button" type="button" data-clear-image="prepared">Clear Image</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="stamp-card" data-role="confirmed">
+          <div class="stamp-preview empty" id="confirmedStampPreview">Confirmation stamp not applied</div>
+          <div class="stamp-form screen-only">
+            <label class="full">Confirmed by name
+              <input id="confirmedName" type="text" autocomplete="off">
+            </label>
+            <label>Section / Position
+              <input id="confirmedSection" type="text" autocomplete="off">
+            </label>
+            <label>Date
+              <input id="confirmedDate" type="date">
+            </label>
+            <label class="full">Optional stamp or signature image
+              <input id="confirmedImageInput" type="file" accept="image/*">
+            </label>
+            <div class="stamp-file-name" id="confirmedImageName">No image selected — a generated stamp will be used.</div>
+            <div class="stamp-actions">
+              <button class="stamp-button apply" type="button" data-apply-stamp="confirmed">Apply Confirmation Stamp</button>
+              <button class="stamp-button" type="button" data-remove-stamp="confirmed">Remove</button>
+              <button class="stamp-button" type="button" data-clear-image="confirmed">Clear Image</button>
+            </div>
+          </div>
+        </article>
+      </div>
+      <p class="document-note">This stamp-entry section is for screen use only and is excluded from printing. Applied stamps appear in the approval boxes at the top.</p>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'micrometer-verification-record-v2';
+  const MAX_MEASUREMENT_ROWS = 20;
+  const MAX_MASTER_ROWS = 30;
+
+  const todayISO = () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+
+  const PROFILES = {
+    newMaster15: {
+      subtitle: 'Micrometer — New Master 2.2 to 15.2 mm',
+      tolerance: { min: -0.005, max: 0.005 },
+      standardValues: [2.2, 4.8, 7.8, 10.4, 12.0, 15.2],
+      masterStandards: [
+        { name: 'BLOCK 2.2mm', code: 'BECC30-09', expiredDate: "AUG '26" },
+        { name: 'BLOCK 4.8mm', code: 'BECC30-09', expiredDate: "AUG '26" },
+        { name: 'BLOCK 7.8mm', code: 'BECC30-09', expiredDate: "AUG '26" },
+        { name: 'BLOCK 10.4mm', code: 'BECC30-09', expiredDate: "AUG '26" },
+        { name: 'BLOCK 12mm', code: 'BECC30-09', expiredDate: "AUG '26" },
+        { name: 'BLOCK 15.2mm', code: 'BECC30-09', expiredDate: "AUG '26" }
+      ]
+    },
+    secondary10: {
+      subtitle: 'Digital Micrometer — Block Set 0.1 to 10 mm',
+      tolerance: { min: -0.005, max: 0.005 },
+      standardValues: [0.1, 0.5, 1.0, 3.0, 5.0, 10.0],
+      masterStandards: [
+        { name: 'BLOCK 0.1mm', code: 'BECC30-07', expiredDate: "AUG '27" },
+        { name: 'BLOCK 0.5mm', code: 'BECC30-08', expiredDate: "AUG '27" },
+        { name: 'BLOCK 1.0mm', code: 'BECC30-02', expiredDate: "AUG '27" },
+        { name: 'BLOCK 3.0mm', code: 'BECC30-03', expiredDate: "AUG '27" },
+        { name: 'BLOCK 5.0mm', code: 'BECC30-05', expiredDate: "AUG '27" },
+        { name: 'BLOCK 10.0mm', code: 'BECC30-06', expiredDate: "AUG '27" }
+      ]
+    },
+    insize25: {
+      subtitle: 'Digital Micrometer — 2.2 to 25 mm',
+      tolerance: { min: -0.005, max: 0.005 },
+      standardValues: [2.2, 4.8, 7.8, 10.4, 12.0, 15.2, 17.4, 19.6, 22.6, 25.0],
+      masterStandards: [
+        { name: 'BLOCK 2.2mm - 25mm', code: 'BECC30-09', expiredDate: "AUG '26" }
+      ]
+    },
+    custom: {
+      subtitle: 'Micrometer — Custom Measuring Points',
+      tolerance: { min: -0.005, max: 0.005 },
+      standardValues: [null],
+      masterStandards: [{ name: '', code: '', expiredDate: '' }]
+    }
+  };
+
+  const defaultData = {
+    version: 2,
+    documentType: 'Micrometer Verification Record',
+    profile: 'newMaster15',
+    equipment: {
+      name: 'MICROMETER',
+      code: 'BECC00-18',
+      maker: 'MITUTOYO',
+      className: 'ORDINARY 1ST CLASS',
+      modelNo: 'MDC-25MX',
+      section: 'ME9110',
+      serialNo: '77167363',
+      location: 'C-MCW-WINDING',
+      verificationOn: '2026-07-06',
+      temperature: 23,
+      humidity: 55,
+      verificationPeriod: 12
+    },
+    checks: {
+      physical: 'Good',
+      display: 'Good',
+      appearanceOperation: 'Good',
+      appearanceDamage: 'Good',
+      functionOperation: 'Good',
+      functionDamage: 'Good'
+    },
+    tolerance: { min: -0.005, max: 0.005 },
+    measurements: PROFILES.newMaster15.standardValues.map((standard) => ({ standard, actual: [null, null, null] })),
+    masterStandards: PROFILES.newMaster15.masterStandards.map((row) => ({ ...row })),
+    stamps: {
+      prepared: { name: '', section: '', date: todayISO(), image: '', imageName: '', applied: false, appliedAt: '' },
+      confirmed: { name: '', section: '', date: todayISO(), image: '', imageName: '', applied: false, appliedAt: '' }
+    }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const deepCopy = (value) => JSON.parse(JSON.stringify(value));
+  const sanitizeFilename = (text) => String(text || 'record').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').replace(/^_+|_+$/g, '') || 'record';
+
+  function normalizeNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function numberFromElement(element) {
+    if (!element) return null;
+    return normalizeNumber(element.value);
+  }
+
+  function setInputValue(id, value) {
+    const element = $(id);
+    if (element) element.value = value === null || value === undefined ? '' : value;
+  }
+
+  function formatNumber(value, decimals = 3) {
+    if (!Number.isFinite(value)) return '';
+    const threshold = 0.5 * (10 ** -decimals);
+    const clean = Math.abs(value) < threshold ? 0 : value;
+    return clean.toFixed(decimals);
+  }
+
+  function storageGet(key) {
+    try { return window.localStorage.getItem(key); } catch (error) { return null; }
+  }
+
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, value); return true; } catch (error) { return false; }
+  }
+
+  function storageRemove(key) {
+    try { window.localStorage.removeItem(key); return true; } catch (error) { return false; }
+  }
+
+  let stampImages = { prepared: '', confirmed: '' };
+  let stampImageNames = { prepared: '', confirmed: '' };
+  let stampApplied = { prepared: false, confirmed: false };
+  let stampAppliedAt = { prepared: '', confirmed: '' };
+  let toastTimer = null;
+  let saveTimer = null;
+  let suppressAutoSave = false;
+
+  function showToast(message) {
+    const toast = $('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2700);
+  }
+
+  function setSaveIndicator(message) {
+    $('saveIndicator').textContent = message;
+  }
+
+  function setStatusCell(cell, status) {
+    cell.textContent = status;
+    cell.classList.remove('status-pass', 'status-fail', 'status-pending');
+    cell.classList.add(status === 'PASS' ? 'status-pass' : status === 'FAIL' ? 'status-fail' : 'status-pending');
+    return status;
+  }
+
+  function updateSelectAppearance(select) {
+    select.classList.remove('select-good', 'select-bad', 'select-empty');
+    if (select.value === 'Good') select.classList.add('select-good');
+    else if (select.value === 'No Good') select.classList.add('select-bad');
+    else select.classList.add('select-empty');
+  }
+
+  function addMonthsISO(dateString, months) {
+    if (!dateString || !Number.isFinite(months)) return '';
+    const parts = dateString.split('-').map(Number);
+    if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return '';
+    const [year, month, day] = parts;
+    const targetStart = new Date(year, month - 1 + months, 1);
+    const lastDay = new Date(targetStart.getFullYear(), targetStart.getMonth() + 1, 0).getDate();
+    const target = new Date(targetStart.getFullYear(), targetStart.getMonth(), Math.min(day, lastDay));
+    const local = new Date(target.getTime() - target.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  function displayStampDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function normalizeMeasurement(row) {
+    const source = row && typeof row === 'object' ? row : {};
+    const actual = Array.isArray(source.actual) ? source.actual.slice(0, 3) : [];
+    while (actual.length < 3) actual.push(null);
+    return {
+      standard: normalizeNumber(source.standard),
+      actual: actual.map(normalizeNumber)
+    };
+  }
+
+  function normalizeMasterStandard(row) {
+    const source = row && typeof row === 'object' ? row : {};
+    return {
+      name: source.name === null || source.name === undefined ? '' : String(source.name),
+      code: source.code === null || source.code === undefined ? '' : String(source.code),
+      expiredDate: source.expiredDate === null || source.expiredDate === undefined ? '' : String(source.expiredDate)
+    };
+  }
+
+  function getTolerance() {
+    return {
+      min: numberFromElement($('toleranceMin')),
+      max: numberFromElement($('toleranceMax'))
+    };
+  }
+
+  function updateMeasurementRowControls() {
+    const rows = Array.from($('measurementBody').querySelectorAll('[data-measurement-row]'));
+    rows.forEach((row, index) => {
+      const button = row.querySelector('[data-remove-measurement-row]');
+      if (!button) return;
+      button.hidden = rows.length <= 1;
+      button.setAttribute('aria-label', `Remove measuring point ${index + 1}`);
+      button.title = 'Remove this measuring point';
+    });
+  }
+
+  function renderMeasurementRows(rows, tolerance) {
+    const body = $('measurementBody');
+    const existingTolerance = $('toleranceMin') ? getTolerance() : deepCopy(defaultData.tolerance);
+    const selectedTolerance = tolerance && typeof tolerance === 'object' ? tolerance : existingTolerance;
+    const normalizedRows = Array.isArray(rows) && rows.length
+      ? rows.slice(0, MAX_MEASUREMENT_ROWS).map(normalizeMeasurement)
+      : [normalizeMeasurement({})];
+
+    body.innerHTML = '';
+    normalizedRows.forEach((measurement, index) => {
+      const row = document.createElement('tr');
+      row.dataset.measurementRow = String(index);
+      const toleranceCells = index === 0 ? `
+        <td class="tolerance-cell" rowspan="${normalizedRows.length}"><input id="toleranceMin" type="number" step="0.001" aria-label="Minimum tolerance"></td>
+        <td class="tolerance-cell" rowspan="${normalizedRows.length}"><input id="toleranceMax" type="number" step="0.001" aria-label="Maximum tolerance"></td>` : '';
+      row.innerHTML = `
+        <td class="measurement-standard-cell">
+          <input data-measure-field="standard" type="number" step="0.001" aria-label="Standard value ${index + 1}">
+          <button class="row-remove screen-only" type="button" data-remove-measurement-row aria-label="Remove measuring point">&times;</button>
+        </td>
+        <td><input data-measure-field="actual0" type="number" step="0.001" aria-label="Actual reading 1 for measuring point ${index + 1}"></td>
+        <td><input data-measure-field="actual1" type="number" step="0.001" aria-label="Actual reading 2 for measuring point ${index + 1}"></td>
+        <td><input data-measure-field="actual2" type="number" step="0.001" aria-label="Actual reading 3 for measuring point ${index + 1}"></td>
+        <td class="computed-cell" data-measure-average></td>
+        <td class="computed-cell" data-measure-difference></td>
+        ${toleranceCells}
+        <td class="judgment status-pending" data-measure-judgment>PENDING</td>`;
+
+      row.querySelector('[data-measure-field="standard"]').value = measurement.standard ?? '';
+      measurement.actual.forEach((value, readingIndex) => {
+        row.querySelector(`[data-measure-field="actual${readingIndex}"]`).value = value ?? '';
+      });
+      body.appendChild(row);
+    });
+
+    setInputValue('toleranceMin', normalizeNumber(selectedTolerance.min));
+    setInputValue('toleranceMax', normalizeNumber(selectedTolerance.max));
+    updateMeasurementRowControls();
+  }
+
+  function getMeasurementRows() {
+    return Array.from($('measurementBody').querySelectorAll('[data-measurement-row]')).map((row) => ({
+      standard: numberFromElement(row.querySelector('[data-measure-field="standard"]')),
+      actual: [0, 1, 2].map((index) => numberFromElement(row.querySelector(`[data-measure-field="actual${index}"]`)))
+    }));
+  }
+
+  function addMeasurementRow() {
+    const rows = getMeasurementRows();
+    if (rows.length >= MAX_MEASUREMENT_ROWS) {
+      showToast(`A maximum of ${MAX_MEASUREMENT_ROWS} measuring points is allowed.`);
+      return;
+    }
+    const tolerance = getTolerance();
+    rows.push({ standard: null, actual: [null, null, null] });
+    renderMeasurementRows(rows, tolerance);
+    const lastRow = $('measurementBody').querySelector('[data-measurement-row]:last-child [data-measure-field="standard"]');
+    if (lastRow) lastRow.focus();
+    calculateAll();
+    autoSaveNow();
+    showToast('Measuring point added.');
+  }
+
+  function removeMeasurementRow(button) {
+    const rowElements = Array.from($('measurementBody').querySelectorAll('[data-measurement-row]'));
+    if (rowElements.length <= 1) {
+      showToast('At least one measuring point must remain.');
+      return;
+    }
+    const targetRow = button.closest('[data-measurement-row]');
+    const index = rowElements.indexOf(targetRow);
+    const rows = getMeasurementRows();
+    const tolerance = getTolerance();
+    if (index >= 0) rows.splice(index, 1);
+    renderMeasurementRows(rows, tolerance);
+    calculateAll();
+    autoSaveNow();
+    showToast('Measuring point removed.');
+  }
+
+  function updateMasterRowControls() {
+    const rows = Array.from($('masterStandardsBody').querySelectorAll('[data-master-row]'));
+    rows.forEach((row, index) => {
+      const button = row.querySelector('[data-remove-master-row]');
+      if (!button) return;
+      button.hidden = rows.length <= 1;
+      button.setAttribute('aria-label', `Remove master equipment row ${index + 1}`);
+      button.title = 'Remove this master equipment row';
+    });
+  }
+
+  function createMasterRow(data = {}, focusName = false) {
+    const body = $('masterStandardsBody');
+    const normalized = normalizeMasterStandard(data);
+    const row = document.createElement('tr');
+    row.dataset.masterRow = 'true';
+    row.innerHTML = `
+      <td class="master-name-cell">
+        <input type="text" data-master-field="name" aria-label="Master standard or equipment name">
+        <button class="row-remove screen-only" type="button" data-remove-master-row aria-label="Remove master equipment row">&times;</button>
+      </td>
+      <td><input type="text" data-master-field="code" aria-label="Master standard or equipment code"></td>
+      <td><input type="text" data-master-field="expiredDate" placeholder="e.g. AUG '27" aria-label="Master standard expired date"></td>`;
+    row.querySelector('[data-master-field="name"]').value = normalized.name;
+    row.querySelector('[data-master-field="code"]').value = normalized.code;
+    row.querySelector('[data-master-field="expiredDate"]').value = normalized.expiredDate;
+    body.appendChild(row);
+    updateMasterRowControls();
+    if (focusName) row.querySelector('[data-master-field="name"]').focus();
+  }
+
+  function setMasterRows(rows) {
+    const body = $('masterStandardsBody');
+    body.innerHTML = '';
+    const normalizedRows = Array.isArray(rows) && rows.length
+      ? rows.slice(0, MAX_MASTER_ROWS).map(normalizeMasterStandard)
+      : [normalizeMasterStandard({})];
+    normalizedRows.forEach((row) => createMasterRow(row));
+    updateMasterRowControls();
+  }
+
+  function getMasterRows() {
+    return Array.from($('masterStandardsBody').querySelectorAll('[data-master-row]')).map((row) => ({
+      name: row.querySelector('[data-master-field="name"]').value,
+      code: row.querySelector('[data-master-field="code"]').value,
+      expiredDate: row.querySelector('[data-master-field="expiredDate"]').value
+    }));
+  }
+
+  function addMasterRow() {
+    const body = $('masterStandardsBody');
+    if (body.querySelectorAll('[data-master-row]').length >= MAX_MASTER_ROWS) {
+      showToast(`A maximum of ${MAX_MASTER_ROWS} master equipment rows is allowed.`);
+      return;
+    }
+    createMasterRow({}, true);
+    autoSaveNow();
+    showToast('Master equipment row added.');
+  }
+
+  function removeMasterRow(button) {
+    const body = $('masterStandardsBody');
+    const rows = body.querySelectorAll('[data-master-row]');
+    if (rows.length <= 1) {
+      showToast('At least one master equipment row must remain.');
+      return;
+    }
+    const row = button.closest('[data-master-row]');
+    if (row) row.remove();
+    updateMasterRowControls();
+    autoSaveNow();
+    showToast('Master equipment row removed.');
+  }
+
+  function updateNextVerification() {
+    const months = numberFromElement($('verificationPeriod'));
+    $('nextVerification').value = addMonthsISO($('verificationOn').value, months);
+  }
+
+  function calculateMeasurements() {
+    const tolerance = getTolerance();
+    const toleranceValid = Number.isFinite(tolerance.min) && Number.isFinite(tolerance.max) && tolerance.min <= tolerance.max;
+    const statuses = [];
+
+    $('measurementBody').querySelectorAll('[data-measurement-row]').forEach((row) => {
+      const standard = numberFromElement(row.querySelector('[data-measure-field="standard"]'));
+      const readings = [0, 1, 2].map((index) => numberFromElement(row.querySelector(`[data-measure-field="actual${index}"]`)));
+      const available = readings.filter(Number.isFinite);
+      const average = available.length ? available.reduce((sum, value) => sum + value, 0) / available.length : null;
+      const difference = Number.isFinite(standard) && Number.isFinite(average) ? average - standard : null;
+
+      row.querySelector('[data-measure-average]').textContent = formatNumber(average);
+      row.querySelector('[data-measure-difference]').textContent = formatNumber(difference);
+
+      const complete = Number.isFinite(standard) && readings.every(Number.isFinite) && toleranceValid;
+      let status = 'PENDING';
+      if (complete) status = difference >= tolerance.min && difference <= tolerance.max ? 'PASS' : 'FAIL';
+      statuses.push(setStatusCell(row.querySelector('[data-measure-judgment]'), status));
+    });
+
+    return statuses;
+  }
+
+  function calculateChecks() {
+    const ids = [
+      'appearancePhysical',
+      'appearanceDisplay',
+      'appearanceOperation',
+      'appearanceDamage',
+      'functionOperation',
+      'functionDamage'
+    ];
+    const values = ids.map((id) => $(id).value);
+    if (values.includes('No Good')) return 'FAIL';
+    if (values.every((value) => value === 'Good')) return 'PASS';
+    return 'PENDING';
+  }
+
+  function calculateOverall(measurementStatuses) {
+    const checkStatus = calculateChecks();
+    const statuses = [checkStatus, ...measurementStatuses];
+    const total = statuses.includes('FAIL') ? 'FAIL' : statuses.every((status) => status === 'PASS') ? 'PASS' : 'PENDING';
+    setStatusCell($('totalJudgment'), total);
+    return total;
+  }
+
+  function calculateAll() {
+    updateNextVerification();
+    document.querySelectorAll('.condition-table select').forEach(updateSelectAppearance);
+    const measurementStatuses = calculateMeasurements();
+    calculateOverall(measurementStatuses);
+  }
+
+  function roleLabel(role) {
+    return role === 'prepared' ? 'PREPARED' : 'CONFIRMED';
+  }
+
+  function renderStamp(role) {
+    const preview = $(`${role}StampPreview`);
+    const mini = $(role === 'prepared' ? 'miniPrepared' : 'miniConfirmed');
+    const name = $(`${role}Name`).value.trim();
+    const section = $(`${role}Section`).value.trim();
+    const date = $(`${role}Date`).value;
+    const label = roleLabel(role);
+
+    if (!stampApplied[role]) {
+      preview.className = 'stamp-preview empty';
+      preview.textContent = role === 'prepared' ? 'Prepared stamp not applied' : 'Confirmation stamp not applied';
+      mini.className = 'mini-stamp';
+      mini.textContent = 'Not stamped';
+      return;
+    }
+
+    preview.className = 'stamp-preview';
+    if (stampImages[role]) {
+      preview.innerHTML = `
+        <img class="uploaded-stamp" src="${stampImages[role]}" alt="${label.toLowerCase()} stamp image">
+        <div class="uploaded-caption">${escapeHtml(label)}<br>${escapeHtml(name)}${section ? `<br>${escapeHtml(section)}` : ''}<br>${escapeHtml(displayStampDate(date))}</div>`;
+    } else {
+      preview.innerHTML = `
+        <div class="generated-stamp">
+          <div class="stamp-role">${escapeHtml(label)}</div>
+          <div class="stamp-name">${escapeHtml(name)}</div>
+          <div class="stamp-meta">${section ? `${escapeHtml(section)}<br>` : ''}${escapeHtml(displayStampDate(date))}</div>
+        </div>`;
+    }
+
+    mini.className = 'mini-stamp applied';
+    mini.innerHTML = `${escapeHtml(label)}<br>${escapeHtml(name)}<br>${escapeHtml(displayStampDate(date))}`;
+  }
+
+  function invalidateStamp(role) {
+    if (stampApplied[role]) {
+      stampApplied[role] = false;
+      stampAppliedAt[role] = '';
+      renderStamp(role);
+      showToast(`${roleLabel(role)} stamp was removed because its details changed.`);
+    }
+  }
+
+  function applyStamp(role) {
+    const name = $(`${role}Name`).value.trim();
+    const date = $(`${role}Date`).value;
+    if (!name || !date) {
+      showToast('Enter the name and date before applying the stamp.');
+      $(`${role}${!name ? 'Name' : 'Date'}`).focus();
+      return;
+    }
+    stampApplied[role] = true;
+    stampAppliedAt[role] = new Date().toISOString();
+    renderStamp(role);
+    autoSaveNow();
+    showToast(`${roleLabel(role)} stamp applied.`);
+  }
+
+  function removeStamp(role) {
+    stampApplied[role] = false;
+    stampAppliedAt[role] = '';
+    renderStamp(role);
+    autoSaveNow();
+    showToast(`${roleLabel(role)} stamp removed.`);
+  }
+
+  function clearStampImage(role) {
+    stampImages[role] = '';
+    stampImageNames[role] = '';
+    $(`${role}ImageInput`).value = '';
+    $(`${role}ImageName`).textContent = 'No image selected — a generated stamp will be used.';
+    invalidateStamp(role);
+    renderStamp(role);
+    autoSaveNow();
+  }
+
+  async function resizeImageFile(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Unable to read image.'));
+      reader.readAsDataURL(file);
+    });
+
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Invalid image file.'));
+      img.src = dataUrl;
+    });
+
+    const maxDimension = 700;
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  }
+
+  async function handleStampImage(role, file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Select a valid image file.');
+      return;
+    }
+    try {
+      setSaveIndicator('Processing image...');
+      stampImages[role] = await resizeImageFile(file);
+      stampImageNames[role] = file.name;
+      $(`${role}ImageName`).textContent = file.name;
+      invalidateStamp(role);
+      renderStamp(role);
+      autoSaveNow();
+      showToast('Stamp image loaded. Apply the stamp to confirm it.');
+    } catch (error) {
+      showToast(error.message || 'Unable to process the image.');
+    } finally {
+      setSaveIndicator('Saved locally');
+    }
+  }
+
+  function setProfileSubtitle(profileKey) {
+    const profile = PROFILES[profileKey] || PROFILES.custom;
+    $('recordSubtitle').textContent = profile.subtitle;
+  }
+
+  function loadSelectedProfile() {
+    const key = $('profileSelect').value;
+    const profile = PROFILES[key] || PROFILES.custom;
+    if (!window.confirm('Load this measuring profile? Existing measuring points and master-standard rows will be replaced. Equipment information and stamps will remain.')) return;
+
+    const measurements = profile.standardValues.map((standard) => ({ standard, actual: [null, null, null] }));
+    renderMeasurementRows(measurements, profile.tolerance);
+    setMasterRows(profile.masterStandards);
+    setProfileSubtitle(key);
+    calculateAll();
+    autoSaveNow();
+    showToast('Measuring profile loaded.');
+  }
+
+  function getFormData() {
+    return {
+      version: 2,
+      documentType: 'Micrometer Verification Record',
+      profile: $('profileSelect').value,
+      equipment: {
+        name: $('equipmentName').value,
+        code: $('equipmentCode').value,
+        maker: $('maker').value,
+        className: $('equipmentClass').value,
+        modelNo: $('modelNo').value,
+        section: $('section').value,
+        serialNo: $('serialNo').value,
+        location: $('location').value,
+        verificationOn: $('verificationOn').value,
+        nextVerification: $('nextVerification').value,
+        temperature: numberFromElement($('temperature')),
+        humidity: numberFromElement($('humidity')),
+        verificationPeriod: numberFromElement($('verificationPeriod'))
+      },
+      checks: {
+        physical: $('appearancePhysical').value,
+        display: $('appearanceDisplay').value,
+        appearanceOperation: $('appearanceOperation').value,
+        appearanceDamage: $('appearanceDamage').value,
+        functionOperation: $('functionOperation').value,
+        functionDamage: $('functionDamage').value
+      },
+      tolerance: getTolerance(),
+      measurements: getMeasurementRows(),
+      masterStandards: getMasterRows(),
+      result: {
+        totalJudgment: $('totalJudgment').textContent
+      },
+      stamps: {
+        prepared: {
+          name: $('preparedName').value,
+          section: $('preparedSection').value,
+          date: $('preparedDate').value,
+          image: stampImages.prepared,
+          imageName: stampImageNames.prepared,
+          applied: stampApplied.prepared,
+          appliedAt: stampAppliedAt.prepared
+        },
+        confirmed: {
+          name: $('confirmedName').value,
+          section: $('confirmedSection').value,
+          date: $('confirmedDate').value,
+          image: stampImages.confirmed,
+          imageName: stampImageNames.confirmed,
+          applied: stampApplied.confirmed,
+          appliedAt: stampAppliedAt.confirmed
+        }
+      }
+    };
+  }
+
+  function mergeWithDefaults(data) {
+    const base = deepCopy(defaultData);
+    if (!data || typeof data !== 'object') return base;
+    const incoming = deepCopy(data);
+
+    if (!incoming.masterStandards && Array.isArray(incoming.calibrationStandards)) incoming.masterStandards = incoming.calibrationStandards;
+    if (incoming.equipment && !incoming.equipment.verificationOn && incoming.equipment.calibrationOn) incoming.equipment.verificationOn = incoming.equipment.calibrationOn;
+
+    const mergeObject = (target, source) => {
+      if (!source || typeof source !== 'object') return target;
+      Object.keys(source).forEach((key) => {
+        if (Array.isArray(source[key])) target[key] = deepCopy(source[key]);
+        else if (source[key] && typeof source[key] === 'object') {
+          if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) target[key] = {};
+          mergeObject(target[key], source[key]);
+        } else target[key] = source[key];
+      });
+      return target;
+    };
+
+    const merged = mergeObject(base, incoming);
+    if (!PROFILES[merged.profile]) merged.profile = 'custom';
+    if (!Array.isArray(merged.measurements) || !merged.measurements.length) merged.measurements = deepCopy(defaultData.measurements);
+    merged.measurements = merged.measurements.slice(0, MAX_MEASUREMENT_ROWS).map(normalizeMeasurement);
+    if (!Array.isArray(merged.masterStandards) || !merged.masterStandards.length) merged.masterStandards = deepCopy(defaultData.masterStandards);
+    merged.masterStandards = merged.masterStandards.slice(0, MAX_MASTER_ROWS).map(normalizeMasterStandard);
+    merged.tolerance = {
+      min: normalizeNumber(merged.tolerance && merged.tolerance.min),
+      max: normalizeNumber(merged.tolerance && merged.tolerance.max)
+    };
+    if (!Number.isFinite(merged.tolerance.min)) merged.tolerance.min = defaultData.tolerance.min;
+    if (!Number.isFinite(merged.tolerance.max)) merged.tolerance.max = defaultData.tolerance.max;
+    return merged;
+  }
+
+  function applyData(data) {
+    const source = mergeWithDefaults(data);
+    suppressAutoSave = true;
+
+    $('profileSelect').value = source.profile;
+    setProfileSubtitle(source.profile);
+
+    setInputValue('equipmentName', source.equipment.name);
+    setInputValue('equipmentCode', source.equipment.code);
+    setInputValue('maker', source.equipment.maker);
+    setInputValue('equipmentClass', source.equipment.className);
+    setInputValue('modelNo', source.equipment.modelNo);
+    setInputValue('section', source.equipment.section);
+    setInputValue('serialNo', source.equipment.serialNo);
+    setInputValue('location', source.equipment.location);
+    setInputValue('verificationOn', source.equipment.verificationOn);
+    setInputValue('temperature', source.equipment.temperature);
+    setInputValue('humidity', source.equipment.humidity);
+    setInputValue('verificationPeriod', source.equipment.verificationPeriod);
+
+    setInputValue('appearancePhysical', source.checks.physical);
+    setInputValue('appearanceDisplay', source.checks.display);
+    setInputValue('appearanceOperation', source.checks.appearanceOperation);
+    setInputValue('appearanceDamage', source.checks.appearanceDamage);
+    setInputValue('functionOperation', source.checks.functionOperation);
+    setInputValue('functionDamage', source.checks.functionDamage);
+
+    renderMeasurementRows(source.measurements, source.tolerance);
+    setMasterRows(source.masterStandards);
+
+    ['prepared', 'confirmed'].forEach((role) => {
+      const stamp = source.stamps[role];
+      setInputValue(`${role}Name`, stamp.name);
+      setInputValue(`${role}Section`, stamp.section);
+      setInputValue(`${role}Date`, stamp.date || todayISO());
+      stampImages[role] = stamp.image || '';
+      stampImageNames[role] = stamp.imageName || '';
+      stampApplied[role] = Boolean(stamp.applied);
+      stampAppliedAt[role] = stamp.appliedAt || '';
+      $(`${role}ImageName`).textContent = stampImageNames[role] || 'No image selected — a generated stamp will be used.';
+      $(`${role}ImageInput`).value = '';
+      renderStamp(role);
+    });
+
+    calculateAll();
+    suppressAutoSave = false;
+  }
+
+  function autoSaveSoon() {
+    if (suppressAutoSave) return;
+    setSaveIndicator('Saving...');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(autoSaveNow, 350);
+  }
+
+  function autoSaveNow() {
+    if (suppressAutoSave) return;
+    const saved = storageSet(STORAGE_KEY, JSON.stringify(getFormData()));
+    setSaveIndicator(saved ? 'Saved locally' : 'Local save unavailable');
+  }
+
+  function exportJson() {
+    calculateAll();
+    const data = getFormData();
+    data.exportedAt = new Date().toISOString();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const code = sanitizeFilename(data.equipment.code || 'Micrometer');
+    const date = (data.equipment.verificationOn || todayISO()).replace(/-/g, '');
+    link.href = url;
+    link.download = `${code}_${date}_Micrometer_Verification_Record.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('JSON record exported.');
+  }
+
+  async function importJsonFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      applyData(data);
+      autoSaveNow();
+      showToast('JSON record imported.');
+    } catch (error) {
+      showToast('Unable to import this JSON file.');
+    } finally {
+      $('jsonFileInput').value = '';
+    }
+  }
+
+  function resetTemplate() {
+    if (!window.confirm('Reset all entries, added rows and stamps to the original micrometer template values?')) return;
+    storageRemove(STORAGE_KEY);
+    applyData(deepCopy(defaultData));
+    autoSaveNow();
+    showToast('Micrometer template restored.');
+  }
+
+  function restoreSavedData() {
+    const saved = storageGet(STORAGE_KEY);
+    if (saved) {
+      try {
+        applyData(JSON.parse(saved));
+        setSaveIndicator('Restored local record');
+        return;
+      } catch (error) {
+        storageRemove(STORAGE_KEY);
+      }
+    }
+    applyData(deepCopy(defaultData));
+    setSaveIndicator(storageSet(STORAGE_KEY, JSON.stringify(getFormData())) ? 'Template loaded' : 'Template loaded — local save unavailable');
+  }
+
+  function attachEvents() {
+    document.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+      if (target.id === 'profileSelect' || target.type === 'file') return;
+
+      if (target.id.startsWith('prepared') && target.id !== 'preparedImageInput') invalidateStamp('prepared');
+      if (target.id.startsWith('confirmed') && target.id !== 'confirmedImageInput') invalidateStamp('confirmed');
+
+      calculateAll();
+      autoSaveSoon();
+    });
+
+    document.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+      if (target.id === 'preparedImageInput') handleStampImage('prepared', target.files[0]);
+      if (target.id === 'confirmedImageInput') handleStampImage('confirmed', target.files[0]);
+    });
+
+    $('measurementBody').addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('[data-remove-measurement-row]');
+      if (button) removeMeasurementRow(button);
+    });
+
+    $('masterStandardsBody').addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('[data-remove-master-row]');
+      if (button) removeMasterRow(button);
+    });
+
+    $('addMeasurementRowButton').addEventListener('click', addMeasurementRow);
+    $('addMasterRowButton').addEventListener('click', addMasterRow);
+    $('applyProfileButton').addEventListener('click', loadSelectedProfile);
+
+    document.querySelectorAll('[data-apply-stamp]').forEach((button) => button.addEventListener('click', () => applyStamp(button.dataset.applyStamp)));
+    document.querySelectorAll('[data-remove-stamp]').forEach((button) => button.addEventListener('click', () => removeStamp(button.dataset.removeStamp)));
+    document.querySelectorAll('[data-clear-image]').forEach((button) => button.addEventListener('click', () => clearStampImage(button.dataset.clearImage)));
+
+    $('resetButton').addEventListener('click', resetTemplate);
+    $('exportButton').addEventListener('click', exportJson);
+    $('importButton').addEventListener('click', () => $('jsonFileInput').click());
+    $('jsonFileInput').addEventListener('change', () => importJsonFile($('jsonFileInput').files[0]));
+    $('printButton').addEventListener('click', () => { calculateAll(); autoSaveNow(); window.print(); });
+    window.addEventListener('beforeprint', () => { calculateAll(); autoSaveNow(); });
+  }
+
+
+  function applyGridEquipment(equipment = {}) {
+    const setGridValue = (id, value) => {
+      setInputValue(id, value === null || value === undefined ? '' : value);
+    };
+
+    setGridValue('equipmentName', equipment.name);
+    setGridValue('equipmentCode', equipment.code);
+    setGridValue('maker', equipment.maker);
+    setGridValue('equipmentClass', equipment.className);
+    setGridValue('modelNo', equipment.modelNo);
+    setGridValue('section', equipment.section);
+    setGridValue('serialNo', equipment.serialNo);
+    setGridValue('location', equipment.location);
+    setGridValue('verificationOn', equipment.calibrationDate);
+    setGridValue('verificationPeriod', equipment.intervalMonths);
+    calculateAll();
+    autoSaveNow();
+  }
+
+  window.GRID_TEMPLATE_API = {
+    type: 'micrometer',
+    getData: () => {
+      calculateAll();
+      autoSaveNow();
+      return getFormData();
+    },
+    applyData: (data) => {
+      applyData(deepCopy(data));
+      autoSaveNow();
+      return getFormData();
+    },
+    applyEquipment: (equipment) => {
+      applyGridEquipment(equipment);
+      return getFormData();
+    },
+    getResult: () => $('totalJudgment').textContent,
+    print: () => {
+      calculateAll();
+      autoSaveNow();
+      window.print();
+    }
+  };
+
+  try {
+    window.parent?.postMessage({ type: 'grid-template-ready', template: 'micrometer' }, '*');
+  } catch (error) {
+    // Parent integration is optional when the form is used standalone.
+  }
+
+  attachEvents();
+  restoreSavedData();
+  calculateAll();
+})();
+</script>
+</body>
+</html>
