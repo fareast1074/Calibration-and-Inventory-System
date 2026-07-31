@@ -1,5 +1,5 @@
 /*
- * GRID Calibration & Inventory System - V3.0 inventory experience layer
+ * GRID Calibration & Inventory System - V3.3 inventory experience layer
  *
  * This file intentionally keeps the existing Firebase Realtime Database paths
  * and record shape used by script.js. It upgrades the scanning workflow,
@@ -67,14 +67,44 @@ function v2Slug(value) {
 const V2_MASTER_FIELD_ALIASES = {
     code: ["EQUIPMENTCODE", "EQUIPCODE", "CODE", "BARCODE", "ASSETCODE"],
     name: ["EQUIPMENTNAME", "EQUIPNAME", "NAME", "ASSETNAME"],
-    serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN"],
+    serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN", "SEERIALNO"],
     location: ["LOCATIONNAME", "LOCATION", "LOC", "EQUIPMENTLOCATION"],
     building: ["BUILDING", "BLDG"],
     production: ["PRODTYPE", "PRODUCTIONTYPE", "PRODUCTION", "PROD"],
-    due: ["DUEDATE", "CALIBRATIONDUEDATE", "CALDUEDATE", "DUE"],
+    due: ["DUEDATE", "CALIBRATIONDUEDATE", "CALDUEDATE", "DUE", "EXPIREDDATE", "EXPIRYDATE"],
     status: ["STATUS", "STATU", "EQUIPMENTSTATUS", "EQUIPSTATUS"],
-    msa: ["MSA", "MSAREQUIREMENT", "MSAREQUIRED"]
+    msa: ["MSA", "MSAREQUIREMENT", "MSAREQUIRED"],
+    className: ["CLASS", "EQUIPMENTCLASS", "ACCURACYCLASS"],
+    maker: ["MAKER", "MANUFACTURER", "BRAND"],
+    modelNo: ["MODELNO", "MODELNUMBER", "MODEL"],
+    functionName: ["FUNCTION", "EQUIPMENTFUNCTION", "FUNCTIONSTATUS"],
+    areaUsed: ["AREAUSED", "USEDAREA", "AREAUSE"],
+    processName: ["PROCESSNAME", "PROCESS", "PROCESSAREA"],
+    stationLocation: ["STATIONLOCATION", "STATION", "STATIONNO", "STATIONNUMBER"],
+    section: ["SECTION", "SECTIONUSE", "SECTIONCODE", "DEPARTMENT"],
+    calibratedBy: ["CALIBRATEDBY", "CALIBRATIONBY", "CALBY", "CALIBRATOR", "CALIBRATIONSUPPLIER"],
+    calibrationCost: ["CALIBRATIONCOST", "CALCOST", "COST"],
+    frequencyMonths: ["FREQUENCY", "FREQUENCYMONTHS", "CALIBRATIONFREQUENCY"],
+    calibrationDate: ["CALIBRATIONDATE", "CALDATE", "VERIFICATIONDATE"],
+    intervalMonths: ["DURATION", "DURATIONMONTHS", "INTERVALMONTHS", "CALIBRATIONINTERVAL", "VERIFICATIONPERIOD", "INTERVAL"],
+    nextVerificationDate: ["EXPIREDDATE", "EXPIRYDATE", "NEXTVERIFICATIONDATE", "NEXTCALIBRATIONDATE", "NEXTDUE", "NEXTDATE"],
+    calibrationMonth: ["CALIBRATIONMONTH", "CALMONTH", "MONTH"],
+    calibrationYear: ["CALIBRATIONYEAR", "CALYEAR", "YEAR"],
+    calibrationTemplateType: ["CALIBRATIONTEMPLATE", "TEMPLATETYPE", "EQUIPMENTTYPE"]
 };
+
+const V2_IMPORT_COLUMN_SYNC = [
+    { key: "code", systemLabel: "Equipment Code", expectedHeader: "EQUIPMENT CODE", required: true },
+    { key: "serialNo", systemLabel: "Serial No.", expectedHeader: "SERIAL NO", required: true },
+    { key: "name", systemLabel: "Equipment Name", expectedHeader: "EQUIPMENT NAME", required: true },
+    { key: "location", systemLabel: "Location", expectedHeader: "LOCATION", required: true },
+    { key: "building", systemLabel: "Building", expectedHeader: "BUILDING", required: true },
+    { key: "production", systemLabel: "Prod Type", expectedHeader: "PRODTYPE", required: true },
+    { key: "due", systemLabel: "Due Date", expectedHeader: "DUE DATE", required: true },
+    { key: "status", systemLabel: "Equipment Status", expectedHeader: "STATUS", required: true },
+    { key: "msa", systemLabel: "MSA", expectedHeader: "MSA", required: true },
+    { key: "calibratedBy", systemLabel: "Calibrated By", expectedHeader: "CALBY / CALIBRATED BY", required: false }
+];
 
 let v2RawMasterLookupSource = null;
 let v2RawMasterLookupCache = null;
@@ -207,6 +237,11 @@ function v2GetExportEquipmentFields(code, item) {
         locationParts.prod,
         "N/A"
     );
+    const calibratedBy = v2FirstNonBlank(
+        v2ObjectValueByAliases(item, V2_MASTER_FIELD_ALIASES.calibratedBy),
+        v2RawMasterValue(normalizedCode, V2_MASTER_FIELD_ALIASES.calibratedBy),
+        "N/A"
+    );
 
     return {
         name,
@@ -214,7 +249,8 @@ function v2GetExportEquipmentFields(code, item) {
         code: normalizedCode,
         location,
         building,
-        production
+        production,
+        calibratedBy
     };
 }
 
@@ -1677,6 +1713,11 @@ function renderQCModal(auditRecord = null) {
 
     const safeCode = escapeHtml(currentItem.barcode || "-");
     const safeName = escapeHtml(currentItem.name || "-");
+    const equipmentFields = v2GetExportEquipmentFields(currentItem.barcode, currentItem);
+    const safeSerialNo = escapeHtml(equipmentFields.serialNo || "N/A");
+    const safeProdType = escapeHtml(equipmentFields.production || "N/A");
+    const safeBuilding = escapeHtml(equipmentFields.building || "N/A");
+    const safeCalibratedBy = escapeHtml(equipmentFields.calibratedBy || "N/A");
     const safeLocation = escapeHtml(currentItem.loc || "N/A");
     const safeDue = escapeHtml(currentItem.due || "N/A");
     const safeStatus = escapeHtml(currentItem.status || "N/A");
@@ -1701,6 +1742,12 @@ function renderQCModal(auditRecord = null) {
             <div class="equipment-name">
                 <span>Equipment name</span>
                 <strong>${safeName}</strong>
+            </div>
+            <div class="equipment-profile-grid" aria-label="Additional registered equipment details">
+                <div><span>Serial no.</span><strong>${safeSerialNo}</strong></div>
+                <div><span>Prod type</span><strong>${safeProdType}</strong></div>
+                <div><span>Building</span><strong>${safeBuilding}</strong></div>
+                <div><span>Calibrated by</span><strong>${safeCalibratedBy}</strong></div>
             </div>
             ${detailMeta}
             <div class="registered-data-grid">
@@ -2378,7 +2425,14 @@ function v2NormalizeImportDue(rawValue) {
         return { valid: false, due: "N/A", month: "N/A", year: "N/A", reason: "Missing due date" };
     }
 
-    let match = value.match(/^([A-Z]{3,9})[\s\/-](\d{2}|\d{4})$/);
+    let match = value.match(/^(\d{2}|\d{4})[\s\/-]([A-Z]{3,9})$/);
+    if (match) {
+        const month = v2MonthFromToken(match[2]);
+        const year = match[1].length === 2 ? `20${match[1]}` : match[1];
+        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
+    }
+
+    match = value.match(/^([A-Z]{3,9})[\s\/-](\d{2}|\d{4})$/);
     if (match) {
         const month = v2MonthFromToken(match[1]);
         const year = match[2].length === 2 ? `20${match[2]}` : match[2];
@@ -2414,6 +2468,105 @@ function v2NormalizeCell(value) {
     return String(value ?? "").trim();
 }
 
+function v2CreateISODate(yearValue, monthValue, dayValue) {
+    const year = Number(yearValue);
+    const month = Number(monthValue);
+    const day = Number(dayValue);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return "";
+    if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return "";
+
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return "";
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+}
+
+function v2NormalizeImportISODate(rawValue, referenceDate = "") {
+    if (rawValue instanceof Date && !Number.isNaN(rawValue.getTime())) {
+        const local = new Date(rawValue.getTime() - rawValue.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 10);
+    }
+
+    if (typeof rawValue === "number" && Number.isFinite(rawValue) && window.XLSX?.SSF?.parse_date_code) {
+        const parsed = XLSX.SSF.parse_date_code(rawValue);
+        if (parsed) return v2CreateISODate(parsed.y, parsed.m, parsed.d);
+    }
+
+    const value = String(rawValue ?? "").trim();
+    if (!value) return "";
+
+    let match = value.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (match) return v2CreateISODate(match[1], match[2], match[3]);
+
+    match = value.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/);
+    if (match) return v2CreateISODate(match[3], match[2], match[1]);
+
+    let year = 0;
+    let month = 0;
+    match = value.match(/^(\d{4})[-\/.\s]([A-Za-z]{3,9}|\d{1,2})$/);
+    if (match) {
+        year = Number(match[1]);
+        month = v2MonthFromToken(match[2]) ? MONTH_ORDER.indexOf(v2MonthFromToken(match[2])) + 1 : 0;
+    } else {
+        match = value.match(/^([A-Za-z]{3,9}|\d{1,2})[-\/.\s](\d{2}|\d{4})$/);
+        if (match) {
+            const monthName = v2MonthFromToken(match[1]);
+            month = monthName ? MONTH_ORDER.indexOf(monthName) + 1 : 0;
+            year = Number(match[2].length === 2 ? `20${match[2]}` : match[2]);
+        }
+    }
+
+    if (!year || !month) return "";
+    const reference = v2NormalizeImportISODate(referenceDate);
+    const preferredDay = reference ? Number(reference.slice(8, 10)) : 1;
+    const lastDay = new Date(year, month, 0).getDate();
+    return v2CreateISODate(year, month, Math.min(preferredDay, lastDay));
+}
+
+function v2AddMonthsISO(dateString, monthsValue) {
+    const date = v2NormalizeImportISODate(dateString);
+    const months = Number(monthsValue);
+    if (!date || !Number.isInteger(months) || months < 1) return "";
+
+    const [year, month, day] = date.split("-").map(Number);
+    const targetStart = new Date(year, month - 1 + months, 1);
+    const lastDay = new Date(targetStart.getFullYear(), targetStart.getMonth() + 1, 0).getDate();
+    return v2CreateISODate(targetStart.getFullYear(), targetStart.getMonth() + 1, Math.min(day, lastDay));
+}
+
+function v2PositiveInteger(value, fallback = "") {
+    const number = Number(String(value ?? "").trim());
+    return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function v2NormalizeCalibrationDate(value) {
+    if (typeof calNormalizeDateISO === "function") {
+        const normalized = calNormalizeDateISO(value);
+        if (normalized) return normalized;
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 10);
+    }
+
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    let match = text.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (match) return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+    match = text.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/);
+    if (match) return `${match[3]}-${String(match[2]).padStart(2, "0")}-${String(match[1]).padStart(2, "0")}`;
+    return "";
+}
+
+function v2NormalizeExpiryDate(value, calibrationDate = "") {
+    if (typeof calNormalizeMonthYearISO === "function") {
+        const normalized = calNormalizeMonthYearISO(value, calibrationDate);
+        if (normalized) return normalized;
+    }
+    return v2NormalizeImportISODate(value, calibrationDate);
+}
+
 function v2FindHeaderColumn(normalizedHeader, aliases) {
     for (const alias of aliases) {
         const index = normalizedHeader.indexOf(v2NormalizeFieldKey(alias));
@@ -2423,66 +2576,217 @@ function v2FindHeaderColumn(normalizedHeader, aliases) {
     return -1;
 }
 
+
+function v2DelimiterScore(line, delimiter) {
+    let score = 0;
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (character === '"') {
+            if (inQuotes && line[index + 1] === '"') {
+                index += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (!inQuotes && character === delimiter) {
+            score += 1;
+        }
+    }
+
+    return score;
+}
+
+function v2DetectDelimitedSeparator(text) {
+    const source = String(text ?? '').replace(/^\uFEFF/, '');
+    const firstLines = source.split(/\r\n|\n|\r/)
+        .filter(line => line.trim() !== '')
+        .slice(0, 5);
+    const candidates = [',', ';', '\t', '|'];
+    let selected = ',';
+    let highestScore = -1;
+
+    candidates.forEach(candidate => {
+        const score = firstLines.reduce((total, line) => total + v2DelimiterScore(line, candidate), 0);
+        if (score > highestScore) {
+            selected = candidate;
+            highestScore = score;
+        }
+    });
+
+    return highestScore > 0 ? selected : ',';
+}
+
+function v2ParseDelimitedText(text) {
+    const source = String(text ?? '').replace(/^\uFEFF/, '');
+    const delimiter = v2DetectDelimitedSeparator(source);
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+
+    const commitRow = () => {
+        row.push(field);
+        if (row.some(value => String(value ?? '').trim() !== '')) rows.push(row);
+        row = [];
+        field = '';
+    };
+
+    for (let index = 0; index < source.length; index += 1) {
+        const character = source[index];
+
+        if (character === '"') {
+            if (inQuotes && source[index + 1] === '"') {
+                field += '"';
+                index += 1;
+            } else if (inQuotes) {
+                inQuotes = false;
+            } else if (field === '') {
+                inQuotes = true;
+            } else {
+                field += character;
+            }
+            continue;
+        }
+
+        if (!inQuotes && character === delimiter) {
+            row.push(field);
+            field = '';
+            continue;
+        }
+
+        if (!inQuotes && (character === '\n' || character === '\r')) {
+            if (character === '\r' && source[index + 1] === '\n') index += 1;
+            commitRow();
+            continue;
+        }
+
+        field += character;
+    }
+
+    if (field !== '' || row.length > 0) commitRow();
+    return rows;
+}
+
+async function v2ReadMasterFileRows(file) {
+    const extension = String(file?.name || '').split('.').pop().toLowerCase();
+
+    if (extension === 'csv' || extension === 'txt') {
+        const rows = v2ParseDelimitedText(await file.text());
+        if (!rows.length) throw new Error('The selected file is empty.');
+        return rows;
+    }
+
+    if (typeof XLSX === 'undefined') {
+        throw new Error('The spreadsheet parser is unavailable. Use CSV or restore the SheetJS library.');
+    }
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, {
+        type: 'array',
+        cellDates: true,
+        raw: true
+    });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        defval: '',
+        raw: true,
+        blankrows: false
+    });
+
+    if (!rows.length) throw new Error('The selected file is empty.');
+    return rows;
+}
+
 async function loadMasterData(input) {
     const file = input?.files?.[0];
     if (!file) return;
 
-    if (typeof XLSX === "undefined") {
-        showToast("Spreadsheet parser is unavailable.", "error");
-        return;
-    }
-
     v2SetScannerStatus("Validating master file", "busy");
 
     try {
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, {
-            type: "array",
-            cellDates: true,
-            raw: true
-        });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            defval: "",
-            raw: true,
-            blankrows: false
-        });
-
-        if (!rows.length) {
-            throw new Error("The selected file is empty.");
-        }
-
-        const normalizedHeader = (Array.isArray(rows[0]) ? rows[0] : [])
-            .map(v2NormalizeFieldKey);
+        const rows = await v2ReadMasterFileRows(file);
+        const sourceHeader = (Array.isArray(rows[0]) ? rows[0] : [])
+            .map(value => String(value ?? "").trim());
+        const normalizedHeader = sourceHeader.map(v2NormalizeFieldKey);
         const detectedIndexes = {
             code: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.code),
             name: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.name),
             serialNo: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.serialNo),
+            className: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.className),
+            maker: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.maker),
+            modelNo: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.modelNo),
+            status: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.status),
+            functionName: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.functionName),
+            areaUsed: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.areaUsed),
             location: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.location),
             building: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.building),
             production: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.production),
+            processName: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.processName),
+            stationLocation: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.stationLocation),
+            section: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.section),
+            msa: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.msa),
+            calibratedBy: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibratedBy),
+            calibrationCost: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibrationCost),
+            frequencyMonths: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.frequencyMonths),
+            calibrationDate: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibrationDate),
+            intervalMonths: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.intervalMonths),
+            nextVerificationDate: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.nextVerificationDate),
+            calibrationMonth: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibrationMonth),
+            calibrationYear: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibrationYear),
             due: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.due),
-            status: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.status),
-            msa: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.msa)
+            calibrationTemplateType: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.calibrationTemplateType)
         };
-        const usesMappedHeader = detectedIndexes.code >= 0 &&
-            (detectedIndexes.name >= 0 || detectedIndexes.location >= 0);
+        const recognizedHeaderCount = Object.values(detectedIndexes)
+            .filter(index => index >= 0).length;
+        if (recognizedHeaderCount > 0 && detectedIndexes.code < 0) {
+            throw new Error("EQUIPMENT CODE column was not found. Check the header row before importing.");
+        }
+
+        const usesMappedHeader = detectedIndexes.code >= 0;
         const indexes = usesMappedHeader
             ? detectedIndexes
             : {
                 code: 0,
                 name: 1,
                 serialNo: -1,
+                className: -1,
+                maker: -1,
+                modelNo: -1,
+                status: 4,
+                functionName: -1,
+                areaUsed: -1,
                 location: 2,
                 building: -1,
                 production: -1,
+                processName: -1,
+                stationLocation: -1,
+                section: -1,
+                msa: 5,
+                calibratedBy: -1,
+                calibrationCost: -1,
+                frequencyMonths: -1,
+                calibrationDate: -1,
+                intervalMonths: -1,
+                nextVerificationDate: -1,
+                calibrationMonth: -1,
+                calibrationYear: -1,
                 due: 3,
-                status: 4,
-                msa: 5
+                calibrationTemplateType: -1
             };
+        const columnSync = V2_IMPORT_COLUMN_SYNC.map(definition => {
+            const index = Number.isInteger(indexes[definition.key]) ? indexes[definition.key] : -1;
+            return {
+                ...definition,
+                found: index >= 0,
+                sourceHeader: index >= 0 ? sourceHeader[index] : "",
+                sourceIndex: index
+            };
+        });
         const sourceHasDueColumn = indexes.due >= 0;
+        const sourceHasExpiryColumn = indexes.nextVerificationDate >= 0;
         const valueAt = (row, index) => index >= 0 ? v2NormalizeCell(row[index]) : "";
 
         const issues = [];
@@ -2494,7 +2798,26 @@ async function loadMasterData(input) {
             "DUE DATE",
             "STATUS",
             "MSA",
-            "SERIAL NO"
+            "SERIAL NO",
+            "EQUIPMENT CLASS",
+            "MAKER",
+            "MODEL",
+            "FUNCTION",
+            "AREA USED",
+            "BUILDING",
+            "PROD TYPE",
+            "PROCESS NAME",
+            "STATION LOCATION",
+            "SECTION USE",
+            "CALIBRATED BY",
+            "CALIBRATION COST",
+            "FREQUENCY",
+            "CALIBRATION DATE",
+            "DURATION",
+            "EXPIRED DATE",
+            "CALIBRATION MONTH",
+            "CALIBRATION YEAR",
+            "CALIBRATION TEMPLATE"
         ]];
         const previewRows = [];
         const seenCodes = new Set();
@@ -2511,11 +2834,28 @@ async function loadMasterData(input) {
             let name = String(valueAt(sourceRow, indexes.name) || "").trim();
             let location = String(valueAt(sourceRow, indexes.location) || "").trim();
             const serialNo = String(valueAt(sourceRow, indexes.serialNo) || "").trim();
-            const rawDue = valueAt(sourceRow, indexes.due);
+            const className = String(valueAt(sourceRow, indexes.className) || "").trim();
+            const maker = String(valueAt(sourceRow, indexes.maker) || "").trim();
+            const modelNo = String(valueAt(sourceRow, indexes.modelNo) || "").trim();
             let status = String(valueAt(sourceRow, indexes.status) || "").trim();
-            let msa = String(valueAt(sourceRow, indexes.msa) || "").trim();
+            const functionName = String(valueAt(sourceRow, indexes.functionName) || "").trim();
+            const areaUsed = String(valueAt(sourceRow, indexes.areaUsed) || "").trim();
             const sourceBuilding = String(valueAt(sourceRow, indexes.building) || "").trim();
             const sourceProduction = String(valueAt(sourceRow, indexes.production) || "").trim();
+            const processName = String(valueAt(sourceRow, indexes.processName) || "").trim();
+            const stationLocation = String(valueAt(sourceRow, indexes.stationLocation) || "").trim();
+            const section = String(valueAt(sourceRow, indexes.section) || "").trim();
+            let msa = String(valueAt(sourceRow, indexes.msa) || "").trim();
+            const calibratedBy = String(valueAt(sourceRow, indexes.calibratedBy) || "").trim();
+            const rawCalibrationCost = valueAt(sourceRow, indexes.calibrationCost);
+            const rawFrequency = valueAt(sourceRow, indexes.frequencyMonths);
+            const rawCalibrationDate = valueAt(sourceRow, indexes.calibrationDate);
+            const rawInterval = valueAt(sourceRow, indexes.intervalMonths);
+            const rawExpiry = valueAt(sourceRow, indexes.nextVerificationDate);
+            const rawCalibrationMonth = String(valueAt(sourceRow, indexes.calibrationMonth) || "").trim();
+            const rawCalibrationYear = String(valueAt(sourceRow, indexes.calibrationYear) || "").trim();
+            const rawDue = valueAt(sourceRow, indexes.due);
+            const calibrationTemplateType = String(valueAt(sourceRow, indexes.calibrationTemplateType) || "").trim();
 
             if (!code) {
                 issues.push({ row: sourceLine, type: "Error", message: "Missing equipment code; row rejected." });
@@ -2542,31 +2882,149 @@ async function loadMasterData(input) {
             if (!status) status = "N/A";
             if (!msa) msa = "N/A";
 
-            const due = sourceHasDueColumn
-                ? v2NormalizeImportDue(rawDue)
-                : { valid: true, due: "N/A", month: "N/A", year: "N/A" };
-            if (sourceHasDueColumn && !due.valid) {
+            const calibrationDate = v2NormalizeCalibrationDate(rawCalibrationDate);
+            if (String(rawCalibrationDate ?? "").trim() && !calibrationDate) {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: invalid Calibration Date; value was not imported.` });
+            }
+
+            const intervalNumber = Number(rawInterval);
+            const intervalMonths = String(rawInterval ?? "").trim() === ""
+                ? ""
+                : (Number.isInteger(intervalNumber) && intervalNumber >= 1 && intervalNumber <= 120 ? intervalNumber : "");
+            if (String(rawInterval ?? "").trim() && intervalMonths === "") {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: Duration must be 1-120 whole months; value was not imported.` });
+            }
+
+            const frequencyNumber = Number(rawFrequency);
+            const frequencyMonths = String(rawFrequency ?? "").trim() === ""
+                ? (intervalMonths || "")
+                : (Number.isInteger(frequencyNumber) && frequencyNumber >= 1 && frequencyNumber <= 120 ? frequencyNumber : "");
+            if (String(rawFrequency ?? "").trim() && frequencyMonths === "") {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: Frequency must be 1-120 whole months; value was not imported.` });
+            }
+
+            const costText = String(rawCalibrationCost ?? "").trim();
+            const costNumber = Number(rawCalibrationCost);
+            const calibrationCost = costText === ""
+                ? ""
+                : (Number.isFinite(costNumber) && costNumber >= 0 ? costNumber : "");
+            if (costText && calibrationCost === "") {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: Calibration Cost must be zero or a positive number; value was not imported.` });
+            }
+
+            let nextVerificationDate = v2NormalizeExpiryDate(rawExpiry, calibrationDate);
+            if (!nextVerificationDate && calibrationDate && intervalMonths) {
+                nextVerificationDate = typeof calAddMonthsISO === "function"
+                    ? calAddMonthsISO(calibrationDate, intervalMonths)
+                    : v2AddMonthsISO(calibrationDate, intervalMonths);
+            }
+            if (String(rawExpiry ?? "").trim() && !nextVerificationDate) {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: invalid Expired Date; value was not imported.` });
+            }
+
+            let due;
+            if (sourceHasDueColumn) {
+                due = v2NormalizeImportDue(rawDue);
+            } else if (sourceHasExpiryColumn && (nextVerificationDate || String(rawExpiry ?? "").trim())) {
+                due = v2NormalizeImportDue(nextVerificationDate || rawExpiry);
+            } else {
+                due = { valid: true, due: "N/A", month: "N/A", year: "N/A" };
+            }
+            if ((sourceHasDueColumn || sourceHasExpiryColumn) && !due.valid) {
                 issues.push({ row: sourceLine, type: "Warning", message: `${code}: ${due.reason}; set to N/A.` });
             }
 
             const locationParts = parseLocationParts(location);
-            const building = sourceBuilding || locationParts.bldg;
-            const production = sourceProduction || locationParts.prod;
-            const normalizedRow = [code, name, locationParts.loc, due.due, status, msa, serialNo];
+            const tokens = String(locationParts.loc || location).split("-").map(value => value.trim()).filter(Boolean);
+            const building = sourceBuilding || locationParts.bldg || tokens[0] || "N/A";
+            const production = sourceProduction || locationParts.prod || tokens[1] || "N/A";
+            const normalizedProcessName = processName || tokens[2] || "";
+            const normalizedStationLocation = stationLocation || (tokens.length > 3 ? tokens.slice(3).join("-") : "");
+
+            let calibrationMonth = rawCalibrationMonth;
+            let calibrationYear = rawCalibrationYear;
+            if (calibrationDate) {
+                const date = new Date(`${calibrationDate}T00:00:00`);
+                calibrationMonth = String(date.getMonth() + 1);
+                calibrationYear = String(date.getFullYear());
+            }
+
+            const normalizedRow = [
+                code,
+                name,
+                locationParts.loc,
+                due.due,
+                status,
+                msa,
+                serialNo,
+                className,
+                maker,
+                modelNo,
+                functionName,
+                areaUsed,
+                building,
+                production,
+                normalizedProcessName,
+                normalizedStationLocation,
+                section,
+                calibratedBy,
+                calibrationCost,
+                frequencyMonths,
+                calibrationDate,
+                intervalMonths,
+                nextVerificationDate,
+                calibrationMonth,
+                calibrationYear,
+                calibrationTemplateType
+            ];
 
             newRawRows.push(normalizedRow);
-            previewRows.push(normalizedRow);
+            previewRows.push([
+                code,
+                serialNo || "N/A",
+                name,
+                locationParts.loc,
+                building,
+                production,
+                due.due,
+                status,
+                msa,
+                calibratedBy || "N/A"
+            ]);
             newMasterDB[code] = {
                 name,
                 serialNo,
+                className,
+                maker,
+                modelNo,
+                status,
+                functionName,
+                areaUsed,
                 loc: locationParts.loc,
                 bldg: building || "N/A",
                 prod: production || "N/A",
-                due: due.due,
-                status,
+                prodType: production || "N/A",
+                processName: normalizedProcessName,
+                stationLocation: normalizedStationLocation,
+                section,
+                sectionUse: section,
                 msa,
+                calibratedBy,
+                calibrationCost,
+                frequencyMonths,
+                frequency: frequencyMonths,
+                calibrationDate,
+                intervalMonths,
+                durationMonths: intervalMonths,
+                duration: intervalMonths,
+                nextVerificationDate,
+                expiredDate: nextVerificationDate,
+                calibrationMonth,
+                calibrationYear,
+                due: due.due,
                 month: due.month,
-                year: due.year
+                year: due.year,
+                calibrationTemplateType
             };
         });
 
@@ -2576,7 +3034,10 @@ async function loadMasterData(input) {
             rawMasterRows: newRawRows,
             previewRows,
             issues,
-            duplicateCount
+            duplicateCount,
+            columnSync,
+            sourceHeader,
+            usesMappedHeader
         };
 
         v2RenderImportPreview();
@@ -2592,7 +3053,7 @@ async function loadMasterData(input) {
 function v2RenderImportPreview() {
     if (!v2PendingMasterImport) return;
 
-    const { previewRows, issues, duplicateCount } = v2PendingMasterImport;
+    const { previewRows, issues, duplicateCount, columnSync = [] } = v2PendingMasterImport;
     const errors = issues.filter(issue => issue.type === "Error");
     const warnings = issues.filter(issue => issue.type === "Warning");
 
@@ -2600,6 +3061,39 @@ function v2RenderImportPreview() {
     v2SetText("importWarningCount", warnings.length);
     v2SetText("importErrorCount", errors.length);
     v2SetText("importDuplicateCount", duplicateCount);
+
+    const requiredSync = columnSync.filter(entry => entry.required);
+    const syncedRequired = requiredSync.filter(entry => entry.found).length;
+    const optionalMissing = columnSync.filter(entry => !entry.required && !entry.found);
+    v2SetText(
+        "importColumnSyncSummary",
+        `${syncedRequired}/${requiredSync.length} required columns mapped`
+    );
+
+    const syncList = v2El("importColumnSyncList");
+    if (syncList) {
+        syncList.innerHTML = columnSync.map(entry => {
+            const stateClass = entry.found ? "sync-found" : entry.required ? "sync-missing" : "sync-optional";
+            const sourceLabel = entry.found ? entry.sourceHeader : "Not found";
+            const stateLabel = entry.found ? "Mapped" : entry.required ? "Required" : "Optional";
+            return `
+                <div class="import-column-map ${stateClass}">
+                    <span>${escapeHtml(sourceLabel)}</span>
+                    <b aria-hidden="true">&rarr;</b>
+                    <strong>${escapeHtml(entry.systemLabel)}</strong>
+                    <small>${stateLabel}</small>
+                </div>
+            `;
+        }).join("");
+    }
+
+    const syncNote = v2El("importColumnSyncNote");
+    if (syncNote) {
+        const optionalText = optionalMissing.length
+            ? " CALBY is not present, so Calibrated By will display N/A until entered manually or supplied in a future file."
+            : " Optional calibrated-by data was also detected.";
+        syncNote.textContent = "Serial numbers are imported as text, including leading zeroes. YY-MMM due dates such as 22-Dec are synchronized as DEC-22." + optionalText;
+    }
 
     const issuePanel = v2El("importIssuePanel");
     const issueList = v2El("importIssueList");
@@ -2672,8 +3166,14 @@ async function confirmMasterImport() {
         });
 
         const count = v2PendingMasterImport.previewRows.length;
+        const requiredSync = (v2PendingMasterImport.columnSync || []).filter(entry => entry.required);
+        const syncedRequired = requiredSync.filter(entry => entry.found).length;
         closeImportModal();
-        showToast(`${count} master row${count === 1 ? "" : "s"} imported successfully.`, "success");
+        showToast(
+            `${count} master row${count === 1 ? "" : "s"} imported successfully. ` +
+            `${syncedRequired}/${requiredSync.length} required columns synchronized.`,
+            "success"
+        );
         v2Feedback("pass");
     } catch (error) {
         console.error("Master upload failed", error);
@@ -3082,7 +3582,7 @@ function v2BuildReportData(useFilters) {
     const completion = totalMaster ? `${Math.round((scanned / totalMaster) * 100)}%` : "0%";
 
     const summaryRows = [
-        ["GRID V3.0 INVENTORY AUDIT REPORT"],
+        ["GRID V3.3 INVENTORY AUDIT REPORT"],
         ["Generated", new Date().toLocaleString("en-MY")],
         ["Generated by", loggedInUser || "Unknown"],
         ["Scope", v2ReportFiltersDescription(filters, search)],

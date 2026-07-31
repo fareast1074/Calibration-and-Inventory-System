@@ -1328,7 +1328,8 @@ tbody tr:hover {
     text-align: right;
 }
 
-.scan-detail-meta {
+.scan-detail-meta,
+.equipment-profile-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 7px;
@@ -1336,6 +1337,7 @@ tbody tr:hover {
 }
 
 .scan-detail-meta > div,
+.equipment-profile-grid > div,
 .registered-data-grid > div {
     min-width: 0;
     padding: 8px;
@@ -1345,6 +1347,7 @@ tbody tr:hover {
 }
 
 .scan-detail-meta span,
+.equipment-profile-grid span,
 .registered-data-grid span {
     display: block;
     color: var(--text-muted);
@@ -1354,6 +1357,7 @@ tbody tr:hover {
 }
 
 .scan-detail-meta strong,
+.equipment-profile-grid strong,
 .registered-data-grid strong {
     display: block;
     margin-top: 2px;
@@ -1662,8 +1666,87 @@ tbody tr:hover {
 .issue-error { color: var(--danger); }
 .issue-warning { color: #a05d00; }
 
+.import-column-sync-card {
+    margin-top: 14px;
+    padding: 0 12px 12px;
+    border: 1px solid rgba(46, 125, 50, 0.24);
+    border-radius: 11px;
+    background: #fbfefb;
+}
+
+.import-column-sync-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+}
+
+.import-column-map {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas:
+        "source arrow target"
+        "state state state";
+    gap: 3px 7px;
+    align-items: center;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: #fff;
+    font-size: 0.7rem;
+}
+
+.import-column-map > span {
+    grid-area: source;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.import-column-map > b {
+    grid-area: arrow;
+    color: var(--text-muted);
+}
+
+.import-column-map > strong {
+    grid-area: target;
+    overflow: hidden;
+    color: var(--primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.import-column-map > small {
+    grid-area: state;
+    font-size: 0.58rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.import-column-map.sync-found {
+    border-color: rgba(46, 125, 50, 0.28);
+    background: #f4fbf5;
+}
+
+.import-column-map.sync-found > small { color: #2e7d32; }
+.import-column-map.sync-missing { border-color: rgba(211, 47, 47, 0.35); background: #fff7f7; }
+.import-column-map.sync-missing > small { color: var(--danger); }
+.import-column-map.sync-optional { border-color: rgba(245, 124, 0, 0.3); background: #fffaf3; }
+.import-column-map.sync-optional > small { color: #a05d00; }
+
+.import-column-sync-note {
+    margin: 10px 0 0;
+    color: var(--text-muted);
+    font-size: 0.69rem;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
 .import-preview-table table {
-    min-width: 760px;
+    min-width: 1180px;
 }
 
 /* Alerts and toasts */
@@ -1973,7 +2056,7 @@ tbody tr:hover {
 
     .import-preview-table table {
         display: table;
-        min-width: 760px;
+        min-width: 1180px;
     }
 
     .import-preview-table thead {
@@ -2038,6 +2121,7 @@ tbody tr:hover {
     }
 
     .scan-detail-meta,
+    .equipment-profile-grid,
     .registered-data-grid {
         grid-template-columns: 1fr;
     }
@@ -2121,7 +2205,7 @@ tbody tr:hover {
 }
 
 /* -------------------------------------------------------------------------- */
-/* V3.0 system chooser and calibration workspace                              */
+/* V3.3 system chooser and calibration workspace                              */
 /* -------------------------------------------------------------------------- */
 
 .module-overlay {
@@ -2422,7 +2506,7 @@ tbody tr:hover {
 
 .calibration-main-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.72fr);
+    grid-template-columns: minmax(0, 1.58fr) minmax(360px, 0.72fr);
     gap: 18px;
     margin-bottom: 18px;
 }
@@ -2534,6 +2618,84 @@ tbody tr:hover {
     background: #f0eeec;
     color: var(--primary);
     font-weight: 850;
+}
+
+.calibration-equipment-detail-form {
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+.calibration-detail-section {
+    min-width: 0;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 13px;
+    background: linear-gradient(145deg, #fff 0%, #fdfaf7 100%);
+}
+
+.calibration-detail-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 13px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee7e2;
+}
+
+.calibration-detail-section-heading strong {
+    display: block;
+    margin-top: 2px;
+    color: var(--primary);
+    font-size: 0.96rem;
+}
+
+.calibration-detail-section-heading small {
+    max-width: 330px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    text-align: right;
+}
+
+.calibration-detail-grid {
+    display: grid;
+    gap: 11px;
+}
+
+.calibration-detail-grid-three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.calibration-detail-grid .cal-span-2 {
+    grid-column: span 2;
+}
+
+.calibration-detail-grid .cal-span-3 {
+    grid-column: 1 / -1;
+}
+
+.calibration-schedule-grid {
+    align-items: end;
+}
+
+.calibration-recalculate-wrap {
+    display: flex;
+    align-items: end;
+    min-height: 69px;
+}
+
+.calibration-recalculate-button {
+    width: 100%;
+    min-height: 43px;
+    padding: 9px 12px;
+}
+
+.calibration-schedule-note {
+    margin: 10px 0 0;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.45;
 }
 
 .calibration-date-block {
@@ -2947,6 +3109,16 @@ tbody tr:hover {
     padding: 5px 8px;
 }
 
+@media (max-width: 920px) {
+    .calibration-detail-grid-three {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .calibration-detail-grid .cal-span-2 {
+        grid-column: span 2;
+    }
+}
+
 @media (max-width: 1100px) {
     .calibration-hero,
     .calibration-scanner-panel {
@@ -3017,12 +3189,25 @@ tbody tr:hover {
     .calibration-camera-row,
     .calibration-form,
     .calibration-date-grid,
+    .calibration-detail-grid,
     .template-selection-actions {
         grid-template-columns: 1fr;
     }
 
-    .calibration-field-wide {
+    .calibration-field-wide,
+    .calibration-detail-grid .cal-span-2,
+    .calibration-detail-grid .cal-span-3 {
         grid-column: 1;
+    }
+
+    .calibration-detail-section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .calibration-detail-section-heading small {
+        max-width: none;
+        text-align: left;
     }
 
     .calibration-date-heading,

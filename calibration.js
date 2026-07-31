@@ -1,5 +1,5 @@
 /*
- * GRID Calibration & Inventory System - V3.0 calibration module
+ * GRID Calibration & Inventory System - V3.3 calibration module
  *
  * Adds the post-login system chooser, equipment calibration workspace,
  * editable master-equipment details, two integrated verification templates,
@@ -41,40 +41,58 @@ const CALIBRATION_TEMPLATE_CONFIG = {
 const CALIBRATION_MASTER_HEADERS = {
     code: "EQUIPMENT CODE",
     name: "EQUIPMENT NAME",
-    serialNo: "SERIAL NO",
     loc: "LOCATION",
-    bldg: "BUILDING",
-    prod: "PROD TYPE",
     due: "DUE DATE",
     status: "STATUS",
     msa: "MSA",
+    serialNo: "SERIAL NO",
+    className: "EQUIPMENT CLASS",
     maker: "MAKER",
-    modelNo: "MODEL NO",
-    className: "CLASS",
-    section: "SECTION",
+    modelNo: "MODEL",
+    functionName: "FUNCTION",
+    areaUsed: "AREA USED",
+    bldg: "BUILDING",
+    prod: "PROD TYPE",
+    processName: "PROCESS NAME",
+    stationLocation: "STATION LOCATION",
+    section: "SECTION USE",
+    calibratedBy: "CALIBRATED BY",
+    calibrationCost: "CALIBRATION COST",
+    frequencyMonths: "FREQUENCY",
     calibrationDate: "CALIBRATION DATE",
-    intervalMonths: "INTERVAL MONTHS",
-    nextVerificationDate: "NEXT VERIFICATION DATE",
+    intervalMonths: "DURATION",
+    nextVerificationDate: "EXPIRED DATE",
+    calibrationMonth: "CALIBRATION MONTH",
+    calibrationYear: "CALIBRATION YEAR",
     calibrationTemplateType: "CALIBRATION TEMPLATE"
 };
 
 const CALIBRATION_MASTER_ALIASES = {
     code: ["EQUIPMENTCODE", "EQUIPCODE", "CODE", "BARCODE", "ASSETCODE"],
     name: ["EQUIPMENTNAME", "EQUIPNAME", "NAME", "ASSETNAME"],
-    serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN"],
+    serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN", "SEERIALNO"],
+    className: ["CLASS", "EQUIPMENTCLASS", "ACCURACYCLASS"],
+    maker: ["MAKER", "MANUFACTURER", "BRAND"],
+    modelNo: ["MODELNO", "MODELNUMBER", "MODEL"],
+    status: ["STATUS", "STATU", "EQUIPMENTSTATUS", "EQUIPSTATUS"],
+    functionName: ["FUNCTION", "EQUIPMENTFUNCTION", "FUNCTIONSTATUS"],
+    areaUsed: ["AREAUSED", "USEDAREA", "AREAUSE"],
     loc: ["LOCATION", "LOCATIONNAME", "LOC", "EQUIPMENTLOCATION"],
     bldg: ["BUILDING", "BLDG"],
     prod: ["PRODTYPE", "PRODUCTIONTYPE", "PRODUCTION", "PROD"],
-    due: ["DUEDATE", "CALIBRATIONDUEDATE", "CALDUEDATE", "DUE"],
-    status: ["STATUS", "STATU", "EQUIPMENTSTATUS", "EQUIPSTATUS"],
+    processName: ["PROCESSNAME", "PROCESS", "PROCESSAREA"],
+    stationLocation: ["STATIONLOCATION", "STATION", "STATIONNO", "STATIONNUMBER"],
+    section: ["SECTION", "SECTIONUSE", "SECTIONCODE", "DEPARTMENT"],
     msa: ["MSA", "MSAREQUIREMENT", "MSAREQUIRED"],
-    maker: ["MAKER", "MANUFACTURER", "BRAND"],
-    modelNo: ["MODELNO", "MODELNUMBER", "MODEL"],
-    className: ["CLASS", "EQUIPMENTCLASS", "ACCURACYCLASS"],
-    section: ["SECTION", "SECTIONCODE", "DEPARTMENT"],
+    calibratedBy: ["CALIBRATEDBY", "CALIBRATIONBY", "CALBY", "CALIBRATOR", "CALIBRATIONSUPPLIER"],
+    calibrationCost: ["CALIBRATIONCOST", "CALCOST", "COST"],
+    frequencyMonths: ["FREQUENCY", "FREQUENCYMONTHS", "CALIBRATIONFREQUENCY"],
     calibrationDate: ["CALIBRATIONDATE", "CALDATE", "VERIFICATIONDATE"],
-    intervalMonths: ["INTERVALMONTHS", "CALIBRATIONINTERVAL", "VERIFICATIONPERIOD", "INTERVAL"],
-    nextVerificationDate: ["NEXTVERIFICATIONDATE", "NEXTCALIBRATIONDATE", "NEXTDUE", "NEXTDATE"],
+    intervalMonths: ["DURATION", "DURATIONMONTHS", "INTERVALMONTHS", "CALIBRATIONINTERVAL", "VERIFICATIONPERIOD", "INTERVAL"],
+    nextVerificationDate: ["EXPIREDDATE", "EXPIRYDATE", "NEXTVERIFICATIONDATE", "NEXTCALIBRATIONDATE", "NEXTDUE", "NEXTDATE"],
+    calibrationMonth: ["CALIBRATIONMONTH", "CALMONTH", "MONTH"],
+    calibrationYear: ["CALIBRATIONYEAR", "CALYEAR", "YEAR"],
+    due: ["DUEDATE", "CALIBRATIONDUEDATE", "CALDUEDATE", "DUE"],
     calibrationTemplateType: ["CALIBRATIONTEMPLATE", "TEMPLATETYPE", "EQUIPMENTTYPE"]
 };
 
@@ -118,6 +136,100 @@ function calTodayISO() {
     const now = new Date();
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
     return local.toISOString().slice(0, 10);
+}
+
+function calCreateISODate(yearValue, monthValue, dayValue) {
+    const year = Number(yearValue);
+    const month = Number(monthValue);
+    const day = Number(dayValue);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return "";
+    if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return "";
+
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return "";
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+}
+
+function calNormalizeDateISO(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 10);
+    }
+
+    if (typeof value === "number" && Number.isFinite(value) && window.XLSX?.SSF?.parse_date_code) {
+        const parsed = XLSX.SSF.parse_date_code(value);
+        if (parsed) return calCreateISODate(parsed.y, parsed.m, parsed.d);
+    }
+
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+
+    let match = text.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (match) return calCreateISODate(match[1], match[2], match[3]);
+
+    match = text.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/);
+    if (match) return calCreateISODate(match[3], match[2], match[1]);
+
+    return "";
+}
+
+function calMonthNumberFromToken(value) {
+    const text = String(value ?? "").trim().toUpperCase();
+    const numeric = Number(text);
+    if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) return numeric;
+
+    const names = Array.isArray(MONTH_ORDER) && MONTH_ORDER.length === 12
+        ? MONTH_ORDER
+        : ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    const index = names.findIndex(month => String(month).toUpperCase() === text.slice(0, 3));
+    return index >= 0 ? index + 1 : 0;
+}
+
+function calNormalizeMonthYearISO(value, referenceDate = "") {
+    const exact = calNormalizeDateISO(value);
+    if (exact) return exact;
+
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+
+    let year = 0;
+    let month = 0;
+    let match = text.match(/^(\d{4})[-\/.\s]([A-Za-z]{3,9}|\d{1,2})$/);
+    if (match) {
+        year = Number(match[1]);
+        month = calMonthNumberFromToken(match[2]);
+    } else {
+        match = text.match(/^([A-Za-z]{3,9}|\d{1,2})[-\/.\s](\d{2}|\d{4})$/);
+        if (match) {
+            month = calMonthNumberFromToken(match[1]);
+            year = Number(match[2].length === 2 ? `20${match[2]}` : match[2]);
+        }
+    }
+
+    if (!year || !month) return "";
+    const reference = calNormalizeDateISO(referenceDate);
+    const preferredDay = reference ? Number(reference.slice(8, 10)) : 1;
+    const lastDay = new Date(year, month, 0).getDate();
+    return calCreateISODate(year, month, Math.min(preferredDay, lastDay));
+}
+
+function calFormatExpiredDate(dateString) {
+    const iso = calNormalizeDateISO(dateString);
+    if (!iso) return "";
+    const date = new Date(`${iso}T00:00:00`);
+    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${date.getFullYear()}-${names[date.getMonth()]}`;
+}
+
+function calCalibrationDateParts(dateString) {
+    const iso = calNormalizeDateISO(dateString);
+    if (!iso) return { month: "", year: "" };
+    const date = new Date(`${iso}T00:00:00`);
+    return {
+        month: String(date.getMonth() + 1),
+        year: String(date.getFullYear())
+    };
 }
 
 function calFormatDate(value) {
@@ -401,19 +513,28 @@ function calItemValue(code, item, fieldName, fallback = "") {
         code,
         name: item?.name,
         serialNo: item?.serialNo,
-        loc: item?.loc,
-        bldg: item?.bldg,
-        prod: item?.prod,
-        due: item?.due,
-        status: item?.status,
-        msa: item?.msa,
+        className: item?.className ?? item?.equipmentClass,
         maker: item?.maker,
-        modelNo: item?.modelNo,
-        className: item?.className,
-        section: item?.section,
+        modelNo: item?.modelNo ?? item?.model,
+        status: item?.status,
+        functionName: item?.functionName ?? item?.functionStatus ?? item?.function,
+        areaUsed: item?.areaUsed ?? item?.area,
+        loc: item?.loc ?? item?.location,
+        bldg: item?.bldg ?? item?.building,
+        prod: item?.prod ?? item?.prodType ?? item?.production,
+        processName: item?.processName ?? item?.process,
+        stationLocation: item?.stationLocation ?? item?.station,
+        section: item?.section ?? item?.sectionUse,
+        msa: item?.msa,
+        calibratedBy: item?.calibratedBy ?? item?.calibrationBy ?? item?.calibrator,
+        calibrationCost: item?.calibrationCost ?? item?.cost,
+        frequencyMonths: item?.frequencyMonths ?? item?.frequency,
         calibrationDate: item?.calibrationDate,
-        intervalMonths: item?.intervalMonths,
-        nextVerificationDate: item?.nextVerificationDate,
+        intervalMonths: item?.intervalMonths ?? item?.durationMonths ?? item?.duration,
+        nextVerificationDate: item?.nextVerificationDate ?? item?.expiredDate,
+        calibrationMonth: item?.calibrationMonth,
+        calibrationYear: item?.calibrationYear,
+        due: item?.due,
         calibrationTemplateType: item?.calibrationTemplateType
     };
 
@@ -430,31 +551,55 @@ function calBuildEquipment(code, item) {
     const locationParts = typeof parseLocationParts === "function"
         ? parseLocationParts(location)
         : { loc: location, bldg: location.split("-")[0] || "N/A", prod: location.split("-")[1] || "N/A" };
+    const locationTokens = String(locationParts.loc || location)
+        .split("-")
+        .map(value => value.trim())
+        .filter(Boolean);
 
-    const intervalValue = Number(calItemValue(normalizedCode, item, "intervalMonths", 12));
-    const calibrationDate = calNormalizeText(calItemValue(normalizedCode, item, "calibrationDate", ""));
-    const nextDate = calNormalizeText(
-        calItemValue(normalizedCode, item, "nextVerificationDate", ""),
-        calibrationDate ? calAddMonthsISO(calibrationDate, Number.isFinite(intervalValue) ? intervalValue : 12) : ""
+    const intervalRaw = Number(calItemValue(normalizedCode, item, "intervalMonths", 12));
+    const intervalMonths = Number.isInteger(intervalRaw) && intervalRaw > 0 ? intervalRaw : 12;
+    const frequencyRaw = Number(calItemValue(normalizedCode, item, "frequencyMonths", intervalMonths));
+    const frequencyMonths = Number.isInteger(frequencyRaw) && frequencyRaw > 0 ? frequencyRaw : intervalMonths;
+
+    const calibrationDate = calNormalizeDateISO(
+        calItemValue(normalizedCode, item, "calibrationDate", "")
     );
+    const calculatedNextDate = calibrationDate ? calAddMonthsISO(calibrationDate, intervalMonths) : "";
+    const storedNextDate = calNormalizeMonthYearISO(
+        calItemValue(normalizedCode, item, "nextVerificationDate", ""),
+        calibrationDate
+    );
+    const nextDate = storedNextDate || calculatedNextDate;
+    const calibrationParts = calCalibrationDateParts(calibrationDate);
 
     return {
         code: normalizedCode,
         name: calNormalizeText(calItemValue(normalizedCode, item, "name", "UNKNOWN"), "UNKNOWN"),
         serialNo: calNormalizeText(calItemValue(normalizedCode, item, "serialNo", "")),
-        loc: locationParts.loc || location,
-        bldg: calNormalizeText(calItemValue(normalizedCode, item, "bldg", locationParts.bldg || "N/A"), "N/A"),
-        prod: calNormalizeText(calItemValue(normalizedCode, item, "prod", locationParts.prod || "N/A"), "N/A"),
-        due: calNormalizeText(calItemValue(normalizedCode, item, "due", nextDate ? calDueDisplayFromISO(nextDate) : "N/A"), "N/A"),
-        status: calNormalizeText(calItemValue(normalizedCode, item, "status", "N/A"), "N/A"),
-        msa: calNormalizeText(calItemValue(normalizedCode, item, "msa", "N/A"), "N/A"),
+        className: calNormalizeText(calItemValue(normalizedCode, item, "className", "")),
         maker: calNormalizeText(calItemValue(normalizedCode, item, "maker", "")),
         modelNo: calNormalizeText(calItemValue(normalizedCode, item, "modelNo", "")),
-        className: calNormalizeText(calItemValue(normalizedCode, item, "className", "")),
+        status: calNormalizeText(calItemValue(normalizedCode, item, "status", "N/A"), "N/A"),
+        functionName: calNormalizeText(calItemValue(normalizedCode, item, "functionName", "")),
+        areaUsed: calNormalizeText(calItemValue(normalizedCode, item, "areaUsed", "")),
+        loc: locationParts.loc || location,
+        bldg: calNormalizeText(calItemValue(normalizedCode, item, "bldg", locationParts.bldg || locationTokens[0] || "N/A"), "N/A"),
+        prod: calNormalizeText(calItemValue(normalizedCode, item, "prod", locationParts.prod || locationTokens[1] || "N/A"), "N/A"),
+        processName: calNormalizeText(calItemValue(normalizedCode, item, "processName", locationTokens[2] || "")),
+        stationLocation: calNormalizeText(calItemValue(normalizedCode, item, "stationLocation", locationTokens.slice(3).join("-") || "")),
         section: calNormalizeText(calItemValue(normalizedCode, item, "section", "")),
+        msa: calNormalizeText(calItemValue(normalizedCode, item, "msa", "N/A"), "N/A"),
+        calibratedBy: calNormalizeText(calItemValue(normalizedCode, item, "calibratedBy", "")),
+        calibrationCost: calNormalizeText(calItemValue(normalizedCode, item, "calibrationCost", "")),
+        frequencyMonths,
         calibrationDate,
-        intervalMonths: Number.isInteger(intervalValue) && intervalValue > 0 ? intervalValue : 12,
+        intervalMonths,
+        durationMonths: intervalMonths,
         nextVerificationDate: nextDate,
+        expiredDate: nextDate,
+        calibrationMonth: calibrationParts.month || calNormalizeText(calItemValue(normalizedCode, item, "calibrationMonth", "")),
+        calibrationYear: calibrationParts.year || calNormalizeText(calItemValue(normalizedCode, item, "calibrationYear", "")),
+        due: calNormalizeText(calItemValue(normalizedCode, item, "due", nextDate ? calDueDisplayFromISO(nextDate) : "N/A"), "N/A"),
         calibrationTemplateType: calNormalizeText(calItemValue(normalizedCode, item, "calibrationTemplateType", ""))
     };
 }
@@ -473,17 +618,24 @@ function fillCalibrationEquipmentForm(equipment, registered) {
     calSetInput("calEquipmentCode", equipment.code);
     calSetInput("calEquipmentName", equipment.name === "UNKNOWN" && !registered ? "" : equipment.name);
     calSetInput("calSerialNo", equipment.serialNo);
+    calSetInput("calEquipmentClass", equipment.className);
+    calSetInput("calMaker", equipment.maker);
+    calSetInput("calModelNo", equipment.modelNo);
+    calSetInput("calEquipmentStatus", equipment.status === "N/A" && !registered ? "IN USE" : equipment.status);
+    calSetInput("calFunction", equipment.functionName || (registered ? "" : "ACTIVE"));
+    calSetInput("calAreaUsed", equipment.areaUsed);
     calSetInput("calLocation", equipment.loc === "N/A" && !registered ? "" : equipment.loc);
     calSetInput("calBuilding", equipment.bldg === "N/A" && !registered ? "" : equipment.bldg);
     calSetInput("calProduction", equipment.prod === "N/A" && !registered ? "" : equipment.prod);
-    calSetInput("calEquipmentStatus", equipment.status === "N/A" && !registered ? "ACTIVE" : equipment.status);
-    calSetInput("calMsa", equipment.msa === "N/A" && !registered ? "N/A" : equipment.msa);
-    calSetInput("calMaker", equipment.maker);
-    calSetInput("calModelNo", equipment.modelNo);
-    calSetInput("calEquipmentClass", equipment.className);
+    calSetInput("calProcessName", equipment.processName);
+    calSetInput("calStationLocation", equipment.stationLocation);
     calSetInput("calSection", equipment.section);
+    calSetInput("calMsa", equipment.msa === "N/A" && !registered ? "N/A" : equipment.msa);
+    calSetInput("calCalibratedBy", equipment.calibratedBy);
+    calSetInput("calCalibrationCost", equipment.calibrationCost === "" ? 0 : equipment.calibrationCost);
     calSetInput("calibrationDate", equipment.calibrationDate || calTodayISO());
     calSetInput("calibrationInterval", equipment.intervalMonths || 12);
+    calSetInput("calFrequency", equipment.frequencyMonths || equipment.intervalMonths || 12);
 
     updateCalibrationNextDate();
     calText("calibrationLoadedCode", equipment.code || "None");
@@ -593,13 +745,35 @@ async function processCalibrationCode(rawCode) {
     window.setTimeout(() => calEl("calEquipmentName")?.focus(), 80);
 }
 
-function updateCalibrationNextDate() {
-    const date = calEl("calibrationDate")?.value || "";
+function updateCalibrationNextDate(options = {}) {
+    const rawDate = calEl("calibrationDate")?.value || "";
+    const date = calNormalizeDateISO(rawDate);
     const interval = Number(calEl("calibrationInterval")?.value || 0);
     const nextDate = calAddMonthsISO(date, interval);
+    const dateParts = calCalibrationDateParts(date);
+
+    if (date && rawDate !== date) calSetInput("calibrationDate", date);
     calSetInput("calibrationNextDate", nextDate);
+    calSetInput("calibrationExpiredDate", nextDate ? calFormatExpiredDate(nextDate) : "");
+    calSetInput("calCalibrationMonth", dateParts.month);
+    calSetInput("calCalibrationYear", dateParts.year);
     calText("calibrationDueDisplay", `DUE: ${nextDate ? calDueDisplayFromISO(nextDate) : "-"}`);
+
+    if (options.syncFrequency && !calNormalizeText(calEl("calFrequency")?.value) && Number.isInteger(interval) && interval > 0) {
+        calSetInput("calFrequency", interval);
+    }
+
     syncEquipmentToCalibrationTemplate({ silent: true, onlyIfReady: true });
+    return nextDate;
+}
+
+function recalculateCalibrationExpiredDate() {
+    const nextDate = updateCalibrationNextDate({ syncFrequency: true });
+    if (nextDate) {
+        showToast(`Expired date recalculated as ${calFormatExpiredDate(nextDate)} (${calFormatDate(nextDate)}).`, "success", 3200);
+    } else {
+        showToast("Enter a valid Calibration Date and Duration before recalculating.", "warning", 3600);
+    }
 }
 
 function collectCalibrationEquipmentForm() {
@@ -609,27 +783,57 @@ function collectCalibrationEquipmentForm() {
     const parsedLocation = typeof parseLocationParts === "function"
         ? parseLocationParts(location)
         : { loc: location, bldg: location.split("-")[0] || "N/A", prod: location.split("-")[1] || "N/A" };
-    const calibrationDate = calEl("calibrationDate")?.value || "";
+    const locationTokens = String(parsedLocation.loc || location)
+        .split("-")
+        .map(value => value.trim())
+        .filter(Boolean);
+
+    const calibrationDate = calNormalizeDateISO(calEl("calibrationDate")?.value || "");
     const intervalMonths = Number(calEl("calibrationInterval")?.value || 0);
+    const frequencyInput = calNormalizeText(calEl("calFrequency")?.value);
+    const frequencyMonths = frequencyInput === "" ? intervalMonths : Number(frequencyInput);
     const nextVerificationDate = calAddMonthsISO(calibrationDate, intervalMonths);
+    const calibrationParts = calCalibrationDateParts(calibrationDate);
+    const calibrationCostInput = calNormalizeText(calEl("calCalibrationCost")?.value);
+    const calibrationCostNumber = calibrationCostInput === "" ? "" : Number(calibrationCostInput);
+    const calibrationCost = calibrationCostInput !== "" && Number.isFinite(calibrationCostNumber)
+        ? calibrationCostNumber
+        : calibrationCostInput;
+    const section = calNormalizeText(calEl("calSection")?.value);
+    const production = calNormalizeText(calEl("calProduction")?.value, parsedLocation.prod || locationTokens[1] || "N/A");
 
     return {
         code,
         name,
         serialNo: calNormalizeText(calEl("calSerialNo")?.value),
-        loc: parsedLocation.loc || location,
-        bldg: calNormalizeText(calEl("calBuilding")?.value, parsedLocation.bldg || "N/A"),
-        prod: calNormalizeText(calEl("calProduction")?.value, parsedLocation.prod || "N/A"),
-        due: nextVerificationDate ? calDueDisplayFromISO(nextVerificationDate) : "N/A",
-        status: calNormalizeText(calEl("calEquipmentStatus")?.value, "N/A").toUpperCase(),
-        msa: calNormalizeText(calEl("calMsa")?.value, "N/A").toUpperCase(),
+        className: calNormalizeText(calEl("calEquipmentClass")?.value),
         maker: calNormalizeText(calEl("calMaker")?.value),
         modelNo: calNormalizeText(calEl("calModelNo")?.value),
-        className: calNormalizeText(calEl("calEquipmentClass")?.value),
-        section: calNormalizeText(calEl("calSection")?.value),
+        status: calNormalizeText(calEl("calEquipmentStatus")?.value, "N/A").toUpperCase(),
+        functionName: calNormalizeText(calEl("calFunction")?.value),
+        areaUsed: calNormalizeText(calEl("calAreaUsed")?.value),
+        loc: parsedLocation.loc || location,
+        bldg: calNormalizeText(calEl("calBuilding")?.value, parsedLocation.bldg || locationTokens[0] || "N/A"),
+        prod: production,
+        prodType: production,
+        processName: calNormalizeText(calEl("calProcessName")?.value, locationTokens[2] || ""),
+        stationLocation: calNormalizeText(calEl("calStationLocation")?.value, locationTokens.slice(3).join("-") || ""),
+        section,
+        sectionUse: section,
+        msa: calNormalizeText(calEl("calMsa")?.value, "N/A").toUpperCase(),
+        calibratedBy: calNormalizeText(calEl("calCalibratedBy")?.value),
+        calibrationCost,
+        frequencyMonths,
+        frequency: frequencyMonths,
         calibrationDate,
         intervalMonths,
+        durationMonths: intervalMonths,
+        duration: intervalMonths,
         nextVerificationDate,
+        expiredDate: nextVerificationDate,
+        calibrationMonth: calibrationParts.month,
+        calibrationYear: calibrationParts.year,
+        due: nextVerificationDate ? calDueDisplayFromISO(nextVerificationDate) : "N/A",
         calibrationTemplateType,
         month: nextVerificationDate ? MONTH_ORDER[new Date(`${nextVerificationDate}T00:00:00`).getMonth()] : "N/A",
         year: nextVerificationDate ? String(new Date(`${nextVerificationDate}T00:00:00`).getFullYear()) : "N/A"
@@ -641,9 +845,16 @@ function validateCalibrationEquipment(equipment, requireSchedule = true) {
     if (!equipment.name) return "Equipment Name is required.";
     if (requireSchedule && !equipment.calibrationDate) return "Calibration Date is required.";
     if (requireSchedule && (!Number.isInteger(equipment.intervalMonths) || equipment.intervalMonths < 1 || equipment.intervalMonths > 120)) {
-        return "Interval must be a whole number from 1 to 120 months.";
+        return "Duration must be a whole number from 1 to 120 months.";
     }
-    if (requireSchedule && !equipment.nextVerificationDate) return "Next Verification Date could not be calculated.";
+    if (equipment.frequencyMonths !== "" && equipment.frequencyMonths !== null && equipment.frequencyMonths !== undefined &&
+        (!Number.isInteger(equipment.frequencyMonths) || equipment.frequencyMonths < 1 || equipment.frequencyMonths > 120)) {
+        return "Frequency must be a whole number from 1 to 120 months.";
+    }
+    if (equipment.calibrationCost !== "" && (!Number.isFinite(Number(equipment.calibrationCost)) || Number(equipment.calibrationCost) < 0)) {
+        return "Calibration Cost must be zero or a positive number.";
+    }
+    if (requireSchedule && !equipment.nextVerificationDate) return "Expired Date could not be calculated.";
     return "";
 }
 
@@ -855,6 +1066,10 @@ function resetCalibrationWorkspace() {
     form?.reset();
     calSetInput("calibrationDate", calTodayISO());
     calSetInput("calibrationInterval", 12);
+    calSetInput("calFrequency", 12);
+    calSetInput("calCalibrationCost", 0);
+    calSetInput("calEquipmentStatus", "IN USE");
+    calSetInput("calFunction", "ACTIVE");
     updateCalibrationNextDate();
     calSetInput("calibrationOriginalCode", "");
     calText("calibrationLoadedCode", "None");
@@ -1060,7 +1275,9 @@ function pullEquipmentFromCalibrationTemplate(options = {}) {
         calSetInput("calSerialNo", equipment.serialNo ?? calEl("calSerialNo")?.value);
         calSetInput("calLocation", equipment.location ?? calEl("calLocation")?.value);
         calSetInput("calibrationDate", equipment.calibrationOn || equipment.verificationOn || calEl("calibrationDate")?.value);
-        calSetInput("calibrationInterval", equipment.calibrationPeriod || equipment.verificationPeriod || calEl("calibrationInterval")?.value);
+        const templateInterval = equipment.calibrationPeriod || equipment.verificationPeriod || calEl("calibrationInterval")?.value;
+        calSetInput("calibrationInterval", templateInterval);
+        if (!calNormalizeText(calEl("calFrequency")?.value)) calSetInput("calFrequency", templateInterval);
         updateCalibrationNextDate();
         updateCalibrationTemplateResult();
         if (!options.silent) showToast("Template equipment details copied back to the master form.", "success", 2600);
@@ -1261,8 +1478,11 @@ async function saveCalibrationRecord(requirePdf = true) {
             equipmentSnapshot: savedEquipment,
             calibrationDate: savedEquipment.calibrationDate,
             intervalMonths: savedEquipment.intervalMonths,
+            frequencyMonths: savedEquipment.frequencyMonths,
             nextVerificationDate: savedEquipment.nextVerificationDate,
             dueDisplay: savedEquipment.due,
+            calibratedBy: savedEquipment.calibratedBy,
+            calibrationCost: savedEquipment.calibrationCost,
             templateType: calibrationTemplateType,
             templateLabel: CALIBRATION_TEMPLATE_CONFIG[calibrationTemplateType].label,
             templateData,
@@ -1460,6 +1680,7 @@ function loadCalibrationRecord(encodedRecordId) {
     fillCalibrationEquipmentForm(equipment, Boolean(masterDB[equipment.code]));
     calSetInput("calibrationDate", record.calibrationDate || equipment.calibrationDate || calTodayISO());
     calSetInput("calibrationInterval", record.intervalMonths || equipment.intervalMonths || 12);
+    calSetInput("calFrequency", record.frequencyMonths || equipment.frequencyMonths || record.intervalMonths || equipment.intervalMonths || 12);
     updateCalibrationNextDate();
 
     if (CALIBRATION_TEMPLATE_CONFIG[record.templateType]) {
@@ -1624,15 +1845,34 @@ function handleCalibrationPdfSelection() {
 
 function calAutofillLocationParts() {
     const location = calNormalizeText(calEl("calLocation")?.value);
-    if (!location || typeof parseLocationParts !== "function") return;
-    const parsed = parseLocationParts(location);
-    if (!calNormalizeText(calEl("calBuilding")?.value)) calSetInput("calBuilding", parsed.bldg === "N/A" ? "" : parsed.bldg);
-    if (!calNormalizeText(calEl("calProduction")?.value)) calSetInput("calProduction", parsed.prod === "N/A" ? "" : parsed.prod);
+    if (!location) return;
+
+    const parsed = typeof parseLocationParts === "function"
+        ? parseLocationParts(location)
+        : { bldg: "", prod: "" };
+    const tokens = location.split("-").map(value => value.trim()).filter(Boolean);
+
+    if (!calNormalizeText(calEl("calBuilding")?.value)) {
+        calSetInput("calBuilding", parsed.bldg === "N/A" ? (tokens[0] || "") : (parsed.bldg || tokens[0] || ""));
+    }
+    if (!calNormalizeText(calEl("calProduction")?.value)) {
+        calSetInput("calProduction", parsed.prod === "N/A" ? (tokens[1] || "") : (parsed.prod || tokens[1] || ""));
+    }
+    if (!calNormalizeText(calEl("calProcessName")?.value) && tokens[2]) {
+        calSetInput("calProcessName", tokens[2]);
+    }
+    if (!calNormalizeText(calEl("calStationLocation")?.value) && tokens.length > 3) {
+        calSetInput("calStationLocation", tokens.slice(3).join("-"));
+    }
 }
 
 function calInitializeModule() {
     calSetInput("calibrationDate", calTodayISO());
     calSetInput("calibrationInterval", 12);
+    calSetInput("calFrequency", 12);
+    calSetInput("calCalibrationCost", 0);
+    calSetInput("calEquipmentStatus", "IN USE");
+    calSetInput("calFunction", "ACTIVE");
     updateCalibrationNextDate();
     calUpdateConnectionUI();
     calUpdateModeUI();

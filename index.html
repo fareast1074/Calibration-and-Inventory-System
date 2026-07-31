@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#5d4037">
     <meta name="description" content="Inventory audit and equipment calibration record system">
-    <title>GRID V3.0 | Calibration & Inventory System</title>
+    <title>GRID V3.3 | Calibration & Inventory System</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
@@ -28,7 +28,7 @@
     <div id="loginOverlay">
         <div class="login-card">
             <div class="scanner-line"></div>
-            <div class="login-kicker">GRID V3.0 | Dev by F4REAST </div>
+            <div class="login-kicker">GRID V3.3 | Dev by F4REAST </div>
             <div class="glitch-title">CALIBRATION &amp; INVENTORY SYSTEM</div>
             <label class="sr-only" for="username">Name</label>
             <input type="text" id="username" placeholder="Name" autocomplete="username">
@@ -209,7 +209,7 @@
             <div>
                 <span class="eyebrow">MASTER DATA</span>
                 <strong>Load CSV or Excel with validation preview</strong>
-                <p>Supports Equipment Code/Name/Location/Due Date/Status/MSA and EquipName/SerialNo/EquipCode/LocationName/Building/ProdType layouts.</p>
+                <p>Supports basic inventory files and detailed calibration fields, including class, maker, model, function, calibration date, duration, frequency, cost, process, station, and section use.</p>
             </div>
             <label class="file-button" for="masterFile">Choose Master File</label>
             <input type="file" id="masterFile" accept=".csv,.xlsx,.xls" onchange="loadMasterData(this)">
@@ -432,7 +432,7 @@
             <div class="calibration-hero-copy">
                 <span class="eyebrow">EQUIPMENT CALIBRATION</span>
                 <h1>Scan, verify, document, and archive</h1>
-                <p>Scan an equipment code to load its master data. Update any field, choose the correct verification template, then upload the completed PDF under the equipment code.</p>
+                <p>Scan an equipment code to load its complete master profile. Update identification, usage, location, calibration schedule, and cost details before completing the selected verification template.</p>
             </div>
             <div class="calibration-workflow-steps" aria-label="Calibration workflow">
                 <span><b>1</b> Scan code</span>
@@ -486,81 +486,148 @@
                     <span id="calibrationEquipmentBadge" class="calibration-record-badge neutral">No equipment</span>
                 </div>
 
-                <form id="calibrationEquipmentForm" class="calibration-form" onsubmit="event.preventDefault(); saveCalibrationEquipmentDetails();">
+                <form id="calibrationEquipmentForm" class="calibration-form calibration-equipment-detail-form" onsubmit="event.preventDefault(); saveCalibrationEquipmentDetails();">
                     <input type="hidden" id="calibrationOriginalCode">
 
-                    <label class="calibration-field calibration-field-wide">
-                        <span>Equipment Code *</span>
-                        <input id="calEquipmentCode" type="text" maxlength="80" autocomplete="off" required>
-                    </label>
-                    <label class="calibration-field calibration-field-wide">
-                        <span>Equipment Name *</span>
-                        <input id="calEquipmentName" type="text" maxlength="160" autocomplete="off" required>
-                    </label>
-                    <label class="calibration-field">
-                        <span>Serial No.</span>
-                        <input id="calSerialNo" type="text" maxlength="100" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Status</span>
-                        <input id="calEquipmentStatus" type="text" list="calibrationStatusOptions" maxlength="60" autocomplete="off">
-                    </label>
-                    <label class="calibration-field calibration-field-wide">
-                        <span>Location</span>
-                        <input id="calLocation" type="text" maxlength="180" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Building</span>
-                        <input id="calBuilding" type="text" maxlength="60" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Production</span>
-                        <input id="calProduction" type="text" maxlength="80" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>MSA Requirement</span>
-                        <input id="calMsa" type="text" list="calibrationMsaOptions" maxlength="40" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Maker</span>
-                        <input id="calMaker" type="text" maxlength="100" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Model No.</span>
-                        <input id="calModelNo" type="text" maxlength="100" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Class</span>
-                        <input id="calEquipmentClass" type="text" maxlength="100" autocomplete="off">
-                    </label>
-                    <label class="calibration-field">
-                        <span>Section</span>
-                        <input id="calSection" type="text" maxlength="80" autocomplete="off">
-                    </label>
+                    <section class="calibration-detail-section calibration-field-wide" aria-labelledby="calibrationIdentityHeading">
+                        <div class="calibration-detail-section-heading">
+                            <div>
+                                <span class="eyebrow">IDENTIFICATION</span>
+                                <strong id="calibrationIdentityHeading">Equipment identification</strong>
+                            </div>
+                            <small>All fields can be edited and saved to the master database.</small>
+                        </div>
+                        <div class="calibration-detail-grid calibration-detail-grid-three">
+                            <label class="calibration-field">
+                                <span>Equipment Code *</span>
+                                <input id="calEquipmentCode" type="text" maxlength="80" autocomplete="off" required>
+                            </label>
+                            <label class="calibration-field cal-span-2">
+                                <span>Equipment Name *</span>
+                                <input id="calEquipmentName" type="text" maxlength="160" autocomplete="off" required>
+                            </label>
+                            <label class="calibration-field">
+                                <span>Serial No.</span>
+                                <input id="calSerialNo" type="text" maxlength="100" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Equipment Class</span>
+                                <input id="calEquipmentClass" type="text" maxlength="100" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Maker</span>
+                                <input id="calMaker" type="text" maxlength="100" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Model</span>
+                                <input id="calModelNo" type="text" maxlength="100" autocomplete="off">
+                            </label>
+                        </div>
+                    </section>
 
-                    <div class="calibration-date-block calibration-field-wide">
+                    <section class="calibration-detail-section calibration-field-wide" aria-labelledby="calibrationUsageHeading">
+                        <div class="calibration-detail-section-heading">
+                            <div>
+                                <span class="eyebrow">USAGE &amp; LOCATION</span>
+                                <strong id="calibrationUsageHeading">Current equipment placement</strong>
+                            </div>
+                            <small>Location, production, process, and ownership information.</small>
+                        </div>
+                        <div class="calibration-detail-grid calibration-detail-grid-three">
+                            <label class="calibration-field">
+                                <span>Status</span>
+                                <input id="calEquipmentStatus" type="text" list="calibrationStatusOptions" maxlength="60" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Function</span>
+                                <input id="calFunction" type="text" list="calibrationFunctionOptions" maxlength="80" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Area Used</span>
+                                <input id="calAreaUsed" type="text" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="calibration-field cal-span-2">
+                                <span>Location</span>
+                                <input id="calLocation" type="text" maxlength="180" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Building</span>
+                                <input id="calBuilding" type="text" maxlength="60" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Prod Type</span>
+                                <input id="calProduction" type="text" maxlength="80" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Process Name</span>
+                                <input id="calProcessName" type="text" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Station Location</span>
+                                <input id="calStationLocation" type="text" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Section Use</span>
+                                <input id="calSection" type="text" maxlength="80" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>MSA Requirement</span>
+                                <input id="calMsa" type="text" list="calibrationMsaOptions" maxlength="40" autocomplete="off">
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="calibration-date-block calibration-field-wide" aria-labelledby="calibrationScheduleHeading">
                         <div class="calibration-date-heading">
                             <div>
                                 <span class="eyebrow">CALIBRATION SCHEDULE</span>
-                                <strong>Next date is calculated automatically</strong>
+                                <strong id="calibrationScheduleHeading">Calibration and expiry information</strong>
                             </div>
                             <span id="calibrationDueDisplay" class="due-code-badge">DUE: -</span>
                         </div>
-                        <div class="calibration-date-grid">
+                        <div class="calibration-detail-grid calibration-detail-grid-three calibration-schedule-grid">
+                            <label class="calibration-field">
+                                <span>Calibrated By</span>
+                                <input id="calCalibratedBy" type="text" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Calibration Cost</span>
+                                <input id="calCalibrationCost" type="number" min="0" step="0.01" inputmode="decimal" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Frequency (Months)</span>
+                                <input id="calFrequency" type="number" min="1" max="120" step="1" inputmode="numeric" autocomplete="off">
+                            </label>
                             <label class="calibration-field">
                                 <span>Calibration Date *</span>
                                 <input id="calibrationDate" type="date" required>
                             </label>
                             <label class="calibration-field">
-                                <span>Interval (Months) *</span>
-                                <input id="calibrationInterval" type="number" min="1" max="120" step="1" value="12" required>
+                                <span>Duration (Months) *</span>
+                                <input id="calibrationInterval" type="number" min="1" max="120" step="1" value="12" inputmode="numeric" required>
+                            </label>
+                            <label class="calibration-field">
+                                <span>Expired Date</span>
+                                <input id="calibrationExpiredDate" type="text" readonly aria-describedby="calibrationExpiredDateHint">
                             </label>
                             <label class="calibration-field">
                                 <span>Next Verification Date</span>
                                 <input id="calibrationNextDate" type="date" readonly>
                             </label>
+                            <label class="calibration-field">
+                                <span>Month</span>
+                                <input id="calCalibrationMonth" type="text" readonly>
+                            </label>
+                            <label class="calibration-field">
+                                <span>Year</span>
+                                <input id="calCalibrationYear" type="text" readonly>
+                            </label>
+                            <div class="calibration-recalculate-wrap cal-span-3">
+                                <button type="button" class="btn-secondary calibration-recalculate-button" onclick="recalculateCalibrationExpiredDate()">Recalculate Expired Date</button>
+                            </div>
                         </div>
-                    </div>
+                        <p id="calibrationExpiredDateHint" class="calibration-schedule-note">Duration is used to calculate the expired date. Frequency is stored separately as equipment information.</p>
+                    </section>
 
                     <div class="calibration-form-actions calibration-field-wide">
                         <button id="saveCalibrationEquipmentButton" type="submit" class="btn-save" disabled>Save Equipment Details</button>
@@ -569,12 +636,19 @@
                 </form>
 
                 <datalist id="calibrationStatusOptions">
+                    <option value="IN USE"></option>
                     <option value="ACTIVE"></option>
                     <option value="INACTIVE"></option>
                     <option value="UNDER REPAIR"></option>
                     <option value="OUT OF SERVICE"></option>
                     <option value="MISSING"></option>
                     <option value="DISPOSED"></option>
+                </datalist>
+                <datalist id="calibrationFunctionOptions">
+                    <option value="ACTIVE"></option>
+                    <option value="INACTIVE"></option>
+                    <option value="STANDBY"></option>
+                    <option value="NOT IN USE"></option>
                 </datalist>
                 <datalist id="calibrationMsaOptions">
                     <option value="YES"></option>
@@ -833,16 +907,30 @@
                     <div><span id="importDuplicateCount">0</span><small>Duplicates</small></div>
                 </div>
 
+                <div class="import-column-sync-card">
+                    <div class="section-header">
+                        <span>Column synchronization</span>
+                        <small id="importColumnSyncSummary">0/9 required columns mapped</small>
+                    </div>
+                    <div id="importColumnSyncList" class="import-column-sync-list"></div>
+                    <p id="importColumnSyncNote" class="import-column-sync-note"></p>
+                </div>
+
                 <div id="importIssuePanel" class="import-issues" hidden>
                     <div class="section-header"><span>Validation issues</span></div>
                     <div id="importIssueList"></div>
                     <button type="button" class="btn-secondary" onclick="downloadImportIssues()">Download issue report</button>
                 </div>
 
-                <div class="section-header"><span>Preview</span><small>First 10 valid rows</small></div>
+                <div class="section-header"><span>Preview</span><small>First 10 valid rows in synchronized order</small></div>
                 <div class="table-container import-preview-table">
                     <table>
-                        <thead><tr><th>Code</th><th>Name</th><th>Location</th><th>Due</th><th>Status</th><th>MSA</th><th>Serial No.</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Code</th><th>Serial No.</th><th>Name</th><th>Location</th><th>Building</th>
+                                <th>Prod Type</th><th>Due</th><th>Status</th><th>MSA</th><th>CalBy</th>
+                            </tr>
+                        </thead>
                         <tbody id="importPreviewBody"></tbody>
                     </table>
                 </div>

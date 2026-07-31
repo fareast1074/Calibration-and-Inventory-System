@@ -812,6 +812,10 @@ function renderQCModal(auditRecord = null) {
     if (modalDataBox && currentItem) {
         const safeCode = escapeHtml(currentItem.barcode);
         const safeName = escapeHtml(currentItem.name);
+        const safeSerialNo = escapeHtml(currentItem.serialNo || currentItem.serial || "N/A");
+        const safeProdType = escapeHtml(currentItem.prodType || currentItem.prod || currentItem.production || "N/A");
+        const safeBuilding = escapeHtml(currentItem.bldg || currentItem.building || "N/A");
+        const safeCalibratedBy = escapeHtml(currentItem.calibratedBy || currentItem.calibrationBy || currentItem.calBy || currentItem.calibrator || "N/A");
         const safeLoc = escapeHtml(currentItem.loc);
         const safeDue = escapeHtml(currentItem.due);
         const safeStatus = escapeHtml(currentItem.status || "N/A");
@@ -837,6 +841,12 @@ function renderQCModal(auditRecord = null) {
             <div style="display:flex; justify-content:space-between; margin:4px 0; gap:12px;">
                 <span style="color:var(--text-muted)">Equipment Name:</span>
                 <span style="color:var(--primary); font-weight:bold; text-align:right;">${safeName}</span>
+            </div>
+            <div class="equipment-profile-grid" aria-label="Additional registered equipment details">
+                <div><span>Serial no.</span><strong>${safeSerialNo}</strong></div>
+                <div><span>Prod type</span><strong>${safeProdType}</strong></div>
+                <div><span>Building</span><strong>${safeBuilding}</strong></div>
+                <div><span>Calibrated by</span><strong>${safeCalibratedBy}</strong></div>
             </div>
             ${detailMeta}
             <div style="border-top: 1px solid var(--border-color); margin: 8px 0; padding-top: 8px;"></div>

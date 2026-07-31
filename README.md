@@ -1,6 +1,6 @@
-# GRID V3.0 Calibration & Inventory System
+# GRID V3.3 Calibration & Inventory System
 
-GRID V3.0 combines the existing inventory-audit workflow with a new equipment-calibration workspace. The current Firebase project configuration is retained, and existing inventory records remain compatible.
+GRID V3.3 combines the existing inventory-audit workflow with a new equipment-calibration workspace. The current Firebase project configuration is retained, and existing inventory records remain compatible.
 
 ## Login and system selection
 
@@ -16,14 +16,47 @@ The existing access modes remain:
 
 The passwords are stored in browser JavaScript. They separate workflows and prevent accidental bulk deletion, but they are not equivalent to Firebase Authentication or server-side authorization.
 
+## V3.2 inventory scan-detail update
+
+The Inventory verification and scanned-item detail panel now shows four additional registered master-data fields immediately after the equipment name:
+
+- Serial No.
+- Prod Type
+- Building
+- Calibrated By
+
+Values are resolved from both Firebase `master_list` and the imported raw master rows. `CalBy`, `Calibrated By`, and equivalent calibrated-by headers are recognized. Blank or unavailable values display as `N/A`. The fields appear for new scans and when reopening an existing audit record.
+
+## V3.3 master CSV synchronization
+
+The master importer is synchronized with the nine-column inventory file used for July 2026:
+
+| Source column | System field |
+|---|---|
+| `EQUIPMENT CODE` | Equipment code and Firebase master key |
+| `SERIAL NO` | Serial number |
+| `EQUIPMENT NAME` | Equipment name |
+| `LOCATION` | Registered location |
+| `BUILDING` | Building filter and equipment detail |
+| `PRODTYPE` | Production type filter and equipment detail |
+| `DUE DATE` | Due display, due month, and due year |
+| `STATUS` | Equipment status |
+| `MSA` | Registered MSA requirement |
+
+CSV files are parsed as text before validation, so serial numbers such as `020408932`, `004847`, and `060` retain their leading zeroes. The importer accepts the source due-date format `YY-MMM`, for example `22-Dec`, and synchronizes it to the application format `DEC-22` with month `DEC` and year `2022`. `MMM-YY` remains supported.
+
+The import preview now displays Code, Serial No., Name, Location, Building, Prod Type, Due, Status, MSA, and CalBy in synchronized order. A column-mapping panel shows the detected source header for every system field before upload. `CALBY` or `CALIBRATED BY` is optional; when it is absent, the scanned detail displays `N/A` until the field is entered manually or supplied in a later master file.
+
+Header-aware mapping is used whenever an equipment-code header is detected. A partially recognized file without `EQUIPMENT CODE` is rejected instead of being silently imported in the wrong column order. Legacy positional files with no recognizable headers remain supported.
+
 ## Calibration workflow
 
 1. Open **Calibration** after login.
 2. Scan or type the equipment code.
-3. The application loads all available fields from `master_list`.
+3. The application loads all available identification, usage, location, schedule, and cost fields from `master_list`.
 4. Edit any equipment information and save it back to the database.
-5. Enter the calibration date and interval in whole months.
-6. The next verification date is calculated automatically. End-of-month dates are handled correctly; for example, 31 January plus one month becomes 28 or 29 February.
+5. Enter the calibration date and Duration in whole months. Frequency can be stored independently.
+6. The Expired Date and exact Next Verification Date are calculated automatically. End-of-month dates are handled correctly; for example, 31 January plus one month becomes 28 or 29 February.
 7. Select **Digital Weight Measure** or **Micrometer**.
 8. Complete the integrated verification template. The scanned equipment details, calibration date, and interval are synchronized into the template.
 9. Select **Print / Save PDF** in the template and save the completed record as a PDF from the browser print dialog.
@@ -33,26 +66,17 @@ A draft can also be saved without a PDF. Each saved record retains the equipment
 
 ## Calibration master-data fields
 
-The calibration page can display and edit:
+The calibration page now contains the complete equipment-detail profile shown in the reference system:
 
-- Equipment Code
-- Equipment Name
-- Serial No.
-- Status
-- Location
-- Building
-- Production
-- MSA Requirement
-- Maker
-- Model No.
-- Class
-- Section
-- Calibration Date
-- Interval in months
-- Next Verification Date
+- Equipment Code, Equipment Name, Serial No., Equipment Class, Maker, and Model
+- Status, Function, Area Used, Location, Building, Prod Type, Process Name, Station Location, and Section Use
+- MSA Requirement, Calibrated By, and Calibration Cost
+- Calibration Date, Duration, Frequency, Expired Date, exact Next Verification Date, Month, and Year
 - Selected Calibration Template
 
-New optional columns are added to `rawMasterRows` automatically when calibration information is saved. Existing master files without those columns remain readable.
+`Duration` is the interval used to calculate the exact next-verification date. `Frequency` is stored separately as equipment metadata. The page also derives Building, Prod Type, Process Name, and Station Location from a location such as `C-RF15-EST-926` when those fields are blank.
+
+The master importer recognizes the expanded headers, including `EquipCode`, `EquipName`, `LocationName`, `ProdType`, `Seerial No`, `Calibration Date`, `Duration`, `Expired Date`, `Frequency`, `Calibration Cost`, `Function`, `Process Name`, `Station Location`, and `Section Use`. New optional columns are added to `rawMasterRows` automatically when calibration information is saved. Existing six- or seven-column master files remain readable.
 
 ## Verification templates
 
@@ -121,7 +145,7 @@ The existing inventory features remain available, including:
 
 - `index.html` - login, system chooser, Inventory page, Calibration page, and Firebase initialization.
 - `script.js` - original inventory and Firebase database logic.
-- `enhancements.js` - V3.0 inventory interface, scanning, filtering, access-mode, import, and reporting layer.
+- `enhancements.js` - V3.3 inventory interface, scanning, filtering, access-mode, import, and reporting layer.
 - `calibration.js` - calibration workflow, master-data editing, template integration, schedule calculation, Firebase record storage, PDF upload, and history.
 - `Digital_Weight_Measure_Profile_Standalone.html` - integrated digital weight template.
 - `Micrometer_Verification_Standalone.html` - integrated micrometer template.
