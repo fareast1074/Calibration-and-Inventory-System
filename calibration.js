@@ -1,5 +1,5 @@
 /*
- * GRID Calibration & Inventory System - V3.3 calibration module
+ * GRID Calibration & Inventory System - V3.4 calibration module
  *
  * Adds the post-login system chooser, equipment calibration workspace,
  * editable master-equipment details, two integrated verification templates,
@@ -23,6 +23,7 @@ let calibrationRecordSaving = false;
 let calibrationTemplateResultTimer = null;
 let calibrationLastDecode = "";
 let calibrationLastDecodeTime = 0;
+let calibrationRegistrationMode = false;
 
 const CALIBRATION_DATABASE_FALLBACK_LIMIT = 6 * 1024 * 1024;
 const CALIBRATION_TEMPLATE_CONFIG = {
@@ -40,6 +41,9 @@ const CALIBRATION_TEMPLATE_CONFIG = {
 
 const CALIBRATION_MASTER_HEADERS = {
     code: "EQUIPMENT CODE",
+    issuedOn: "ISSUED ON",
+    issuerName: "ISSUER NAME",
+    issuerNo: "ISSUER NO",
     name: "EQUIPMENT NAME",
     loc: "LOCATION",
     due: "DUE DATE",
@@ -69,6 +73,9 @@ const CALIBRATION_MASTER_HEADERS = {
 
 const CALIBRATION_MASTER_ALIASES = {
     code: ["EQUIPMENTCODE", "EQUIPCODE", "CODE", "BARCODE", "ASSETCODE"],
+    issuedOn: ["ISSUEDON", "ISSUEDDATE", "REGISTEREDON", "REGISTRATIONDATE", "DATEISSUED"],
+    issuerName: ["ISSUERNAME", "ISSUEDBY", "REGISTEREDBY", "REGISTRAR", "OWNERNAME"],
+    issuerNo: ["ISSUERNO", "ISSUERID", "EMPLOYEENO", "EMPLOYEENUMBER", "STAFFNO", "STAFFID"],
     name: ["EQUIPMENTNAME", "EQUIPNAME", "NAME", "ASSETNAME"],
     serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN", "SEERIALNO"],
     className: ["CLASS", "EQUIPMENTCLASS", "ACCURACYCLASS"],
@@ -511,6 +518,9 @@ function calRawValue(code, fieldName) {
 function calItemValue(code, item, fieldName, fallback = "") {
     const directMap = {
         code,
+        issuedOn: item?.issuedOn ?? item?.issuedDate ?? item?.registeredOn,
+        issuerName: item?.issuerName ?? item?.issuedBy ?? item?.registrar,
+        issuerNo: item?.issuerNo ?? item?.issuerId ?? item?.employeeNo ?? item?.staffNo,
         name: item?.name,
         serialNo: item?.serialNo,
         className: item?.className ?? item?.equipmentClass,
@@ -574,6 +584,9 @@ function calBuildEquipment(code, item) {
 
     return {
         code: normalizedCode,
+        issuedOn: calNormalizeDateISO(calItemValue(normalizedCode, item, "issuedOn", "")),
+        issuerName: calNormalizeText(calItemValue(normalizedCode, item, "issuerName", "")),
+        issuerNo: calNormalizeText(calItemValue(normalizedCode, item, "issuerNo", "")),
         name: calNormalizeText(calItemValue(normalizedCode, item, "name", "UNKNOWN"), "UNKNOWN"),
         serialNo: calNormalizeText(calItemValue(normalizedCode, item, "serialNo", "")),
         className: calNormalizeText(calItemValue(normalizedCode, item, "className", "")),
@@ -609,12 +622,56 @@ function calSetInput(id, value) {
     if (input) input.value = value === undefined || value === null ? "" : String(value);
 }
 
+function calSetTemplateCardsEnabled(enabled) {
+    ["weightTemplateCard", "micrometerTemplateCard"].forEach(id => {
+        const button = calEl(id);
+        if (button) button.disabled = !enabled;
+    });
+}
+
+function calUpdateEquipmentSaveButtonLabel() {
+    const saveButton = calEl("saveCalibrationEquipmentButton");
+    if (saveButton && !calibrationEquipmentSaving) {
+        saveButton.textContent = calibrationRegistrationMode ? "Register Equipment" : "Save Equipment Details";
+    }
+}
+
+function calSetRegistrationMode(enabled, options = {}) {
+    calibrationRegistrationMode = Boolean(enabled);
+    const section = calEl("calibrationRegistrationSection");
+    if (section) section.classList.toggle("is-registration-mode", calibrationRegistrationMode);
+
+    ["calIssuedOn", "calIssuerName", "calIssuerNo"].forEach(id => {
+        const input = calEl(id);
+        if (!input) return;
+        input.required = calibrationRegistrationMode;
+        input.setAttribute("aria-required", calibrationRegistrationMode ? "true" : "false");
+    });
+
+    const badgeText = options.badgeText || (calibrationRegistrationMode ? "New registration" : "Existing record");
+    const badgeTone = options.badgeTone || (calibrationRegistrationMode ? "warning" : "neutral");
+    calSetRecordBadge("calibrationRegistrationModeBadge", badgeText, badgeTone);
+    calText(
+        "calibrationRegistrationHint",
+        calibrationRegistrationMode
+            ? "Issued On, Issuer Name, and Issuer No. are required before the new equipment can be registered."
+            : "Registration fields are optional for existing imported equipment and remain editable."
+    );
+
+    const registerButton = calEl("registerNewEquipmentButton");
+    if (registerButton) registerButton.classList.toggle("active", calibrationRegistrationMode);
+    calUpdateEquipmentSaveButtonLabel();
+}
+
 function fillCalibrationEquipmentForm(equipment, registered) {
     calibrationCurrentItem = equipment;
     calibrationCurrentCode = equipment.code;
     calibrationOriginalCode = registered ? equipment.code : "";
 
     calSetInput("calibrationOriginalCode", calibrationOriginalCode);
+    calSetInput("calIssuedOn", equipment.issuedOn || (!registered ? calTodayISO() : ""));
+    calSetInput("calIssuerName", equipment.issuerName || (!registered ? (loggedInUser || "") : ""));
+    calSetInput("calIssuerNo", equipment.issuerNo);
     calSetInput("calEquipmentCode", equipment.code);
     calSetInput("calEquipmentName", equipment.name === "UNKNOWN" && !registered ? "" : equipment.name);
     calSetInput("calSerialNo", equipment.serialNo);
@@ -648,10 +705,8 @@ function fillCalibrationEquipmentForm(equipment, registered) {
 
     const saveButton = calEl("saveCalibrationEquipmentButton");
     if (saveButton) saveButton.disabled = false;
-    ["weightTemplateCard", "micrometerTemplateCard"].forEach(id => {
-        const button = calEl(id);
-        if (button) button.disabled = false;
-    });
+    calSetRegistrationMode(!registered);
+    calSetTemplateCardsEnabled(registered);
     calUpdateRecordActionState();
 
     if (equipment.calibrationTemplateType && CALIBRATION_TEMPLATE_CONFIG[equipment.calibrationTemplateType]) {
@@ -711,12 +766,45 @@ async function submitCalibrationCode() {
     await processCalibrationCode(code);
 }
 
+function startNewEquipmentRegistration() {
+    const enteredCode = calNormalizeCode(calEl("calEquipmentCode")?.value || "");
+    const hasWorkspaceData = Boolean(calibrationCurrentCode || enteredCode || calibrationRegistrationMode);
+    if (hasWorkspaceData && !confirm("Start a new equipment registration? Unsaved equipment, template, and PDF selections in the current workspace will be discarded.")) {
+        return;
+    }
+
+    resetCalibrationWorkspace({ skipConfirm: true });
+    const equipment = calBuildEquipment("", {});
+    equipment.issuedOn = calTodayISO();
+    equipment.issuerName = loggedInUser || "";
+    equipment.issuerNo = "";
+    equipment.calibrationDate = calTodayISO();
+    equipment.intervalMonths = 12;
+    equipment.frequencyMonths = 12;
+    equipment.calibrationCost = 0;
+    equipment.status = "IN USE";
+    equipment.functionName = "ACTIVE";
+    equipment.msa = "N/A";
+
+    fillCalibrationEquipmentForm(equipment, false);
+    calibrationCurrentCode = "";
+    calibrationCurrentItem = null;
+    calText("calibrationLoadedCode", "New registration");
+    calText("calibrationMasterState", "Enter new equipment details");
+    calSetRecordBadge("calibrationEquipmentBadge", "New registration", "warning");
+    calSetRegistrationMode(true, { badgeText: "Registration required", badgeTone: "warning" });
+    calSetScannerState("New equipment registration", "active");
+    calEl("calEquipmentCode")?.focus();
+    showToast("New equipment registration is ready. Complete the required fields and select Register Equipment.", "info", 4800);
+}
+
 async function processCalibrationCode(rawCode) {
     const code = calNormalizeCode(rawCode);
     if (!code) return;
 
-    const changingEquipment = Boolean(calibrationCurrentCode && calibrationCurrentCode !== code);
-    if (changingEquipment && !confirm(`Load ${code}? Unsaved equipment, template, and PDF selections for ${calibrationCurrentCode} will be discarded.`)) {
+    const changingEquipment = calibrationRegistrationMode || Boolean(calibrationCurrentCode && calibrationCurrentCode !== code);
+    const currentLabel = calibrationCurrentCode || calNormalizeCode(calEl("calEquipmentCode")?.value) || "the new registration";
+    if (changingEquipment && !confirm(`Load ${code}? Unsaved equipment, template, and PDF selections for ${currentLabel} will be discarded.`)) {
         calSetScannerState("Ready to scan", "ready");
         calEl("calibrationScanInput")?.focus();
         return;
@@ -737,8 +825,9 @@ async function processCalibrationCode(rawCode) {
         showToast(`${code} master details loaded.`, "success", 2600);
         if (typeof v2Feedback === "function") v2Feedback("pass");
     } else {
-        calSetScannerState("Code not registered - create a new master record", "error");
-        showToast(`${code} is not in the master list. Complete the details and save to create it.`, "warning", 4800);
+        calText("calibrationMasterState", "Registration required");
+        calSetScannerState("Code not registered - complete the registration form", "error");
+        showToast(`${code} is not in the master list. Complete the registration and equipment details, then select Register Equipment.`, "warning", 5200);
         if (typeof v2Feedback === "function") v2Feedback("fail");
     }
 
@@ -804,6 +893,9 @@ function collectCalibrationEquipmentForm() {
 
     return {
         code,
+        issuedOn: calNormalizeDateISO(calEl("calIssuedOn")?.value || ""),
+        issuerName: calNormalizeText(calEl("calIssuerName")?.value),
+        issuerNo: calNormalizeText(calEl("calIssuerNo")?.value),
         name,
         serialNo: calNormalizeText(calEl("calSerialNo")?.value),
         className: calNormalizeText(calEl("calEquipmentClass")?.value),
@@ -840,9 +932,12 @@ function collectCalibrationEquipmentForm() {
     };
 }
 
-function validateCalibrationEquipment(equipment, requireSchedule = true) {
+function validateCalibrationEquipment(equipment, requireSchedule = true, requireRegistration = calibrationRegistrationMode) {
     if (!equipment.code) return "Equipment Code is required.";
     if (!equipment.name) return "Equipment Name is required.";
+    if (requireRegistration && !equipment.issuedOn) return "Issued On is required for a new equipment registration.";
+    if (requireRegistration && !equipment.issuerName) return "Issuer Name is required for a new equipment registration.";
+    if (requireRegistration && !equipment.issuerNo) return "Issuer No. is required for a new equipment registration.";
     if (requireSchedule && !equipment.calibrationDate) return "Calibration Date is required.";
     if (requireSchedule && (!Number.isInteger(equipment.intervalMonths) || equipment.intervalMonths < 1 || equipment.intervalMonths > 120)) {
         return "Duration must be a whole number from 1 to 120 months.";
@@ -893,7 +988,7 @@ function calUpdateRawMasterRows(equipment, oldCode) {
     const { rows, indexes } = calEnsureRawHeaders(rawMasterRows);
     let row = rows.slice(1).find(source => {
         const sourceCode = calNormalizeCode(source[indexes.code]);
-        return sourceCode === normalizedOldCode || sourceCode === equipment.code;
+        return (normalizedOldCode && sourceCode === normalizedOldCode) || sourceCode === equipment.code;
     });
 
     if (!row) {
@@ -976,14 +1071,26 @@ async function calMigrateEquipmentNodes(oldCode, newCode) {
 async function saveCalibrationEquipmentDetails(options = {}) {
     if (calibrationEquipmentSaving) return null;
     const equipment = collectCalibrationEquipmentForm();
-    const validationError = validateCalibrationEquipment(equipment, options.requireSchedule !== false);
+    const isNewRegistration = calibrationRegistrationMode || !calNormalizeCode(calibrationOriginalCode);
+    const validationError = validateCalibrationEquipment(
+        equipment,
+        options.requireSchedule !== false,
+        options.requireRegistration !== false && isNewRegistration
+    );
     if (validationError) {
         if (!options.silent) showToast(validationError, "warning");
         return null;
     }
 
-    const oldCode = calNormalizeCode(calibrationOriginalCode || calibrationCurrentCode || equipment.code);
-    if (oldCode !== equipment.code && masterDB[equipment.code]) {
+    const oldCode = isNewRegistration
+        ? ""
+        : calNormalizeCode(calibrationOriginalCode || calibrationCurrentCode);
+    if (isNewRegistration && masterDB[equipment.code]) {
+        showToast(`${equipment.code} is already registered. Load the equipment before editing it.`, "error", 5200);
+        calEl("calEquipmentCode")?.focus();
+        return null;
+    }
+    if (!isNewRegistration && oldCode !== equipment.code && masterDB[equipment.code]) {
         showToast(`${equipment.code} already exists. Use a unique equipment code.`, "error", 4800);
         calEl("calEquipmentCode")?.focus();
         return null;
@@ -991,18 +1098,27 @@ async function saveCalibrationEquipmentDetails(options = {}) {
 
     calibrationEquipmentSaving = true;
     const saveButton = calEl("saveCalibrationEquipmentButton");
-    const priorButtonText = saveButton?.textContent || "Save Equipment Details";
     if (saveButton) {
         saveButton.disabled = true;
-        saveButton.textContent = "Saving...";
+        saveButton.textContent = isNewRegistration ? "Registering..." : "Saving...";
     }
 
     try {
-        const existing = masterDB[oldCode] || masterDB[equipment.code] || {};
+        const now = new Date().toISOString();
+        const existing = isNewRegistration
+            ? {}
+            : (masterDB[oldCode] || masterDB[equipment.code] || {});
         const savedEquipment = {
             ...existing,
             ...equipment,
-            lastUpdatedAt: new Date().toISOString(),
+            ...(isNewRegistration ? {
+                createdAt: existing.createdAt || now,
+                createdBy: existing.createdBy || loggedInUser,
+                registeredAt: existing.registeredAt || now,
+                registeredBy: existing.registeredBy || loggedInUser,
+                registrationSource: existing.registrationSource || "CALIBRATION WORKSPACE"
+            } : {}),
+            lastUpdatedAt: now,
             lastUpdatedBy: loggedInUser
         };
         const updatedMasterDB = { ...masterDB };
@@ -1027,14 +1143,29 @@ async function saveCalibrationEquipmentDetails(options = {}) {
         calSetInput("calibrationOriginalCode", equipment.code);
         calText("calibrationLoadedCode", equipment.code);
         calText("calibrationMasterState", "Registered equipment");
-        calSetRecordBadge("calibrationEquipmentBadge", "Saved to master", "success");
+        calSetRegistrationMode(false, {
+            badgeText: isNewRegistration ? "Registered" : "Existing record",
+            badgeTone: isNewRegistration ? "success" : "neutral"
+        });
+        calSetRecordBadge(
+            "calibrationEquipmentBadge",
+            isNewRegistration ? "Registered" : "Saved to master",
+            "success"
+        );
+        calSetTemplateCardsEnabled(true);
         subscribeCalibrationRecords(equipment.code);
         rebuildFilters();
         updateDisplay();
         syncEquipmentToCalibrationTemplate({ silent: true, onlyIfReady: true });
 
         if (!options.silent) {
-            showToast(`${equipment.code} equipment details saved to the database.`, "success");
+            showToast(
+                isNewRegistration
+                    ? `${equipment.code} was registered and saved to the master database.`
+                    : `${equipment.code} equipment details were saved to the database.`,
+                "success",
+                4200
+            );
             if (typeof v2Feedback === "function") v2Feedback("pass");
         }
         return savedEquipment;
@@ -1044,16 +1175,18 @@ async function saveCalibrationEquipmentDetails(options = {}) {
         return null;
     } finally {
         calibrationEquipmentSaving = false;
-        if (saveButton) {
-            saveButton.disabled = false;
-            saveButton.textContent = priorButtonText;
-        }
+        if (saveButton) saveButton.disabled = false;
+        calUpdateEquipmentSaveButtonLabel();
         calUpdateRecordActionState();
     }
 }
 
-function resetCalibrationWorkspace() {
-    if (calibrationCurrentCode && !confirm("Clear the current calibration workspace? Unsaved form and template changes will be discarded.")) return;
+function resetCalibrationWorkspace(options = {}) {
+    const enteredCode = calNormalizeCode(calEl("calEquipmentCode")?.value || "");
+    const hasWorkspaceData = Boolean(calibrationCurrentCode || enteredCode || calibrationRegistrationMode);
+    if (hasWorkspaceData && !options.skipConfirm && !confirm("Clear the current calibration workspace? Unsaved form and template changes will be discarded.")) {
+        return false;
+    }
 
     calibrationCurrentCode = "";
     calibrationOriginalCode = "";
@@ -1064,29 +1197,33 @@ function resetCalibrationWorkspace() {
 
     const form = calEl("calibrationEquipmentForm");
     form?.reset();
+    calSetRegistrationMode(false, { badgeText: "No equipment", badgeTone: "neutral" });
+    calSetInput("calIssuedOn", "");
+    calSetInput("calIssuerName", "");
+    calSetInput("calIssuerNo", "");
     calSetInput("calibrationDate", calTodayISO());
     calSetInput("calibrationInterval", 12);
     calSetInput("calFrequency", 12);
     calSetInput("calCalibrationCost", 0);
     calSetInput("calEquipmentStatus", "IN USE");
     calSetInput("calFunction", "ACTIVE");
+    calSetInput("calMsa", "N/A");
     updateCalibrationNextDate();
     calSetInput("calibrationOriginalCode", "");
     calText("calibrationLoadedCode", "None");
     calText("calibrationMasterState", "Waiting");
     calSetRecordBadge("calibrationEquipmentBadge", "No equipment", "neutral");
+    calSetTemplateCardsEnabled(false);
     ["weightTemplateCard", "micrometerTemplateCard"].forEach(id => {
-        const button = calEl(id);
-        if (button) {
-            button.disabled = true;
-            button.classList.remove("selected");
-        }
+        calEl(id)?.classList.remove("selected");
     });
     const saveButton = calEl("saveCalibrationEquipmentButton");
     if (saveButton) saveButton.disabled = true;
+    calUpdateEquipmentSaveButtonLabel();
     renderCalibrationHistory();
     calSetScannerState("Ready to scan", "ready");
-    calEl("calibrationScanInput")?.focus();
+    if (!options.suppressFocus) calEl("calibrationScanInput")?.focus();
+    return true;
 }
 
 function calTemplateAPI() {
@@ -1125,6 +1262,10 @@ function calUpdateTemplateSelectionUI() {
 function openCalibrationTemplate(type, restoreData = null) {
     const config = CALIBRATION_TEMPLATE_CONFIG[type];
     if (!config) return;
+    if (calibrationRegistrationMode) {
+        showToast("Register the new equipment before opening a calibration template.", "warning", 4200);
+        return;
+    }
     if (!calibrationCurrentCode && !calNormalizeCode(calEl("calEquipmentCode")?.value)) {
         showToast("Scan or enter an equipment code before opening a template.", "warning");
         return;
@@ -1867,6 +2008,10 @@ function calAutofillLocationParts() {
 }
 
 function calInitializeModule() {
+    calSetRegistrationMode(false, { badgeText: "No equipment", badgeTone: "neutral" });
+    calSetInput("calIssuedOn", "");
+    calSetInput("calIssuerName", "");
+    calSetInput("calIssuerNo", "");
     calSetInput("calibrationDate", calTodayISO());
     calSetInput("calibrationInterval", 12);
     calSetInput("calFrequency", 12);

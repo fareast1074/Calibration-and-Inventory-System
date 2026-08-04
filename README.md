@@ -1,6 +1,6 @@
-# GRID V3.3 Calibration & Inventory System
+# GRID V3.4 Calibration & Inventory System
 
-GRID V3.3 combines the existing inventory-audit workflow with a new equipment-calibration workspace. The current Firebase project configuration is retained, and existing inventory records remain compatible.
+GRID V3.4 combines the existing inventory-audit workflow with a new equipment-calibration workspace. The current Firebase project configuration is retained, and existing inventory records remain compatible.
 
 ## Login and system selection
 
@@ -15,6 +15,26 @@ The existing access modes remain:
 - Password `1074`: **Developer Mode**. Full existing inventory controls are available, including **Clear Cloud** and **Logout & Clear** for inventory audit history and temporary locks.
 
 The passwords are stored in browser JavaScript. They separate workflows and prevent accidental bulk deletion, but they are not equivalent to Firebase Authentication or server-side authorization.
+
+
+## V3.4 new equipment registration
+
+The Calibration workspace now includes an explicit **Register New Equipment** workflow. It can be opened without scanning, or it starts automatically when a scanned equipment code is not found in `master_list`.
+
+New registrations capture:
+
+- Issued On
+- Issuer Name
+- Issuer No.
+- Equipment Code, Equipment Name, Serial No., Equipment Class, Maker, and Model
+- Function, Status, Area Used, Location, Building, Prod Type, Process Name, Station Location, and Section Use
+- Calibrated By, Calibration Cost, Frequency, Calibration Date, Duration, Expired Date, Month, Year, and MSA Requirement
+
+For a new record, Issued On, Issuer Name, Issuer No., Equipment Code, Equipment Name, Calibration Date, and Duration are validated before saving. Issued On defaults to the current date and Issuer Name defaults to the signed-in user. Duplicate equipment codes are blocked so an existing master record cannot be overwritten accidentally.
+
+After registration, the new equipment is written to both `masterDB` and `rawMasterRows` under `master_list`. The raw master data receives `ISSUED ON`, `ISSUER NAME`, and `ISSUER NO` columns automatically. Registration audit metadata (`createdAt`, `createdBy`, `registeredAt`, `registeredBy`, and `registrationSource`) is also stored in the equipment object. Calibration templates remain disabled until the new equipment has been registered successfully.
+
+The master importer recognizes the optional headers `ISSUED ON`, `ISSUER NAME`, and `ISSUER NO`, including supported aliases. Existing nine-column inventory files remain compatible and leave these optional fields blank.
 
 ## V3.2 inventory scan-detail update
 
@@ -52,9 +72,9 @@ Header-aware mapping is used whenever an equipment-code header is detected. A pa
 ## Calibration workflow
 
 1. Open **Calibration** after login.
-2. Scan or type the equipment code.
-3. The application loads all available identification, usage, location, schedule, and cost fields from `master_list`.
-4. Edit any equipment information and save it back to the database.
+2. Scan or type an existing equipment code, or select **Register New Equipment** for a new master record.
+3. Existing equipment loads from `master_list`; an unknown scanned code opens registration mode automatically.
+4. Enter or edit registration, identification, usage, location, schedule, and cost details, then save them to the database.
 5. Enter the calibration date and Duration in whole months. Frequency can be stored independently.
 6. The Expired Date and exact Next Verification Date are calculated automatically. End-of-month dates are handled correctly; for example, 31 January plus one month becomes 28 or 29 February.
 7. Select **Digital Weight Measure** or **Micrometer**.
@@ -68,6 +88,7 @@ A draft can also be saved without a PDF. Each saved record retains the equipment
 
 The calibration page now contains the complete equipment-detail profile shown in the reference system:
 
+- Issued On, Issuer Name, and Issuer No.
 - Equipment Code, Equipment Name, Serial No., Equipment Class, Maker, and Model
 - Status, Function, Area Used, Location, Building, Prod Type, Process Name, Station Location, and Section Use
 - MSA Requirement, Calibrated By, and Calibration Cost
@@ -145,8 +166,8 @@ The existing inventory features remain available, including:
 
 - `index.html` - login, system chooser, Inventory page, Calibration page, and Firebase initialization.
 - `script.js` - original inventory and Firebase database logic.
-- `enhancements.js` - V3.3 inventory interface, scanning, filtering, access-mode, import, and reporting layer.
-- `calibration.js` - calibration workflow, master-data editing, template integration, schedule calculation, Firebase record storage, PDF upload, and history.
+- `enhancements.js` - V3.4 inventory interface, scanning, filtering, access-mode, import, and reporting layer.
+- `calibration.js` - calibration workflow, new-equipment registration, master-data editing, template integration, schedule calculation, Firebase record storage, PDF upload, and history.
 - `Digital_Weight_Measure_Profile_Standalone.html` - integrated digital weight template.
 - `Micrometer_Verification_Standalone.html` - integrated micrometer template.
 - `style.css` - responsive styling for both systems.

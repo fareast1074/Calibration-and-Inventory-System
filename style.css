@@ -2205,7 +2205,7 @@ tbody tr:hover {
 }
 
 /* -------------------------------------------------------------------------- */
-/* V3.3 system chooser and calibration workspace                              */
+/* V3.4 system chooser and calibration workspace                              */
 /* -------------------------------------------------------------------------- */
 
 .module-overlay {
@@ -2504,6 +2504,59 @@ tbody tr:hover {
     background: #111;
 }
 
+.calibration-registration-launch {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    margin-top: 12px;
+    padding: 13px 14px;
+    border: 1px solid rgba(21, 101, 192, 0.24);
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8fbff 0%, #fdf8f3 100%);
+}
+
+.calibration-registration-launch strong,
+.calibration-registration-launch small {
+    display: block;
+}
+
+.calibration-registration-launch strong {
+    margin-top: 2px;
+    color: var(--primary-strong);
+    font-size: 0.86rem;
+}
+
+.calibration-registration-launch small {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.btn-register-equipment {
+    min-height: 42px;
+    padding: 10px 14px;
+    border: 1px solid var(--info);
+    border-radius: 9px;
+    background: var(--info);
+    color: #fff;
+    font-weight: 900;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.btn-register-equipment:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 7px 16px rgba(21, 101, 192, 0.18);
+}
+
+.btn-register-equipment.active {
+    border-color: #a46500;
+    background: #a46500;
+}
+
 .calibration-main-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.58fr) minmax(360px, 0.72fr);
@@ -2631,6 +2684,35 @@ tbody tr:hover {
     border: 1px solid var(--border-color);
     border-radius: 13px;
     background: linear-gradient(145deg, #fff 0%, #fdfaf7 100%);
+}
+
+.calibration-registration-section {
+    border-color: rgba(21, 101, 192, 0.24);
+    background: linear-gradient(145deg, #f8fbff 0%, #fff 55%, #fdf8f3 100%);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.calibration-registration-section.is-registration-mode {
+    border-color: rgba(249, 168, 37, 0.72);
+    background: linear-gradient(145deg, #fffaf0 0%, #fff 58%, #f8fbff 100%);
+    box-shadow: inset 0 0 0 1px rgba(249, 168, 37, 0.18);
+}
+
+.calibration-registration-section.is-registration-mode .calibration-field input:required {
+    border-color: rgba(249, 168, 37, 0.62);
+    background: #fffdf7;
+}
+
+.calibration-registration-hint {
+    margin: 10px 0 0;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    line-height: 1.45;
+}
+
+.calibration-registration-section.is-registration-mode .calibration-registration-hint {
+    color: #8a5b00;
+    font-weight: 750;
 }
 
 .calibration-detail-section-heading {
@@ -3187,11 +3269,16 @@ tbody tr:hover {
     }
 
     .calibration-camera-row,
+    .calibration-registration-launch,
     .calibration-form,
     .calibration-date-grid,
     .calibration-detail-grid,
     .template-selection-actions {
         grid-template-columns: 1fr;
+    }
+
+    .btn-register-equipment {
+        width: 100%;
     }
 
     .calibration-field-wide,

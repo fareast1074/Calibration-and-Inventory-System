@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#5d4037">
     <meta name="description" content="Inventory audit and equipment calibration record system">
-    <title>GRID V3.3 | Calibration & Inventory System</title>
+    <title>GRID V3.4 | Calibration & Inventory System</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
@@ -28,7 +28,7 @@
     <div id="loginOverlay">
         <div class="login-card">
             <div class="scanner-line"></div>
-            <div class="login-kicker">GRID V3.3 | Dev by F4REAST </div>
+            <div class="login-kicker">GRID V3.4 | Dev by F4REAST </div>
             <div class="glitch-title">CALIBRATION &amp; INVENTORY SYSTEM</div>
             <label class="sr-only" for="username">Name</label>
             <input type="text" id="username" placeholder="Name" autocomplete="username">
@@ -435,7 +435,7 @@
                 <p>Scan an equipment code to load its complete master profile. Update identification, usage, location, calibration schedule, and cost details before completing the selected verification template.</p>
             </div>
             <div class="calibration-workflow-steps" aria-label="Calibration workflow">
-                <span><b>1</b> Scan code</span>
+                <span><b>1</b> Scan or register</span>
                 <span><b>2</b> Edit details</span>
                 <span><b>3</b> Complete template</span>
                 <span><b>4</b> Upload PDF</span>
@@ -472,6 +472,14 @@
                         </select>
                     </label>
                 </div>
+                <div class="calibration-registration-launch">
+                    <div>
+                        <span class="eyebrow">NEW MASTER RECORD</span>
+                        <strong>Register equipment without scanning</strong>
+                        <small>Use this for equipment that is not yet available in the Firebase master list.</small>
+                    </div>
+                    <button id="registerNewEquipmentButton" type="button" class="btn-register-equipment" onclick="startNewEquipmentRegistration()">Register New Equipment</button>
+                </div>
                 <div id="calibrationReader" aria-label="Calibration camera scanner"></div>
             </div>
         </section>
@@ -488,6 +496,31 @@
 
                 <form id="calibrationEquipmentForm" class="calibration-form calibration-equipment-detail-form" onsubmit="event.preventDefault(); saveCalibrationEquipmentDetails();">
                     <input type="hidden" id="calibrationOriginalCode">
+
+                    <section id="calibrationRegistrationSection" class="calibration-detail-section calibration-registration-section calibration-field-wide" aria-labelledby="calibrationRegistrationHeading">
+                        <div class="calibration-detail-section-heading">
+                            <div>
+                                <span class="eyebrow">REGISTRATION INFORMATION</span>
+                                <strong id="calibrationRegistrationHeading">Equipment issue and registration</strong>
+                            </div>
+                            <span id="calibrationRegistrationModeBadge" class="calibration-record-badge neutral">Existing record</span>
+                        </div>
+                        <div class="calibration-detail-grid calibration-detail-grid-three">
+                            <label class="calibration-field">
+                                <span>Issued On *</span>
+                                <input id="calIssuedOn" type="date" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Issuer Name *</span>
+                                <input id="calIssuerName" type="text" maxlength="120" autocomplete="off">
+                            </label>
+                            <label class="calibration-field">
+                                <span>Issuer No. *</span>
+                                <input id="calIssuerNo" type="text" maxlength="80" autocomplete="off">
+                            </label>
+                        </div>
+                        <p id="calibrationRegistrationHint" class="calibration-registration-hint">Registration fields are optional for existing imported equipment. They are required when creating a new master record.</p>
+                    </section>
 
                     <section class="calibration-detail-section calibration-field-wide" aria-labelledby="calibrationIdentityHeading">
                         <div class="calibration-detail-section-heading">

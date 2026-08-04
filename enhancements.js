@@ -1,5 +1,5 @@
 /*
- * GRID Calibration & Inventory System - V3.3 inventory experience layer
+ * GRID Calibration & Inventory System - V3.4 inventory experience layer
  *
  * This file intentionally keeps the existing Firebase Realtime Database paths
  * and record shape used by script.js. It upgrades the scanning workflow,
@@ -66,6 +66,9 @@ function v2Slug(value) {
 
 const V2_MASTER_FIELD_ALIASES = {
     code: ["EQUIPMENTCODE", "EQUIPCODE", "CODE", "BARCODE", "ASSETCODE"],
+    issuedOn: ["ISSUEDON", "ISSUEDDATE", "REGISTEREDON", "REGISTRATIONDATE", "DATEISSUED"],
+    issuerName: ["ISSUERNAME", "ISSUEDBY", "REGISTEREDBY", "REGISTRAR", "OWNERNAME"],
+    issuerNo: ["ISSUERNO", "ISSUERID", "EMPLOYEENO", "EMPLOYEENUMBER", "STAFFNO", "STAFFID"],
     name: ["EQUIPMENTNAME", "EQUIPNAME", "NAME", "ASSETNAME"],
     serialNo: ["SERIALNO", "SERIALNUMBER", "SERIALNUM", "SERIAL", "SN", "SEERIALNO"],
     location: ["LOCATIONNAME", "LOCATION", "LOC", "EQUIPMENTLOCATION"],
@@ -95,6 +98,9 @@ const V2_MASTER_FIELD_ALIASES = {
 
 const V2_IMPORT_COLUMN_SYNC = [
     { key: "code", systemLabel: "Equipment Code", expectedHeader: "EQUIPMENT CODE", required: true },
+    { key: "issuedOn", systemLabel: "Issued On", expectedHeader: "ISSUED ON", required: false },
+    { key: "issuerName", systemLabel: "Issuer Name", expectedHeader: "ISSUER NAME", required: false },
+    { key: "issuerNo", systemLabel: "Issuer No.", expectedHeader: "ISSUER NO", required: false },
     { key: "serialNo", systemLabel: "Serial No.", expectedHeader: "SERIAL NO", required: true },
     { key: "name", systemLabel: "Equipment Name", expectedHeader: "EQUIPMENT NAME", required: true },
     { key: "location", systemLabel: "Location", expectedHeader: "LOCATION", required: true },
@@ -2713,6 +2719,9 @@ async function loadMasterData(input) {
         const normalizedHeader = sourceHeader.map(v2NormalizeFieldKey);
         const detectedIndexes = {
             code: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.code),
+            issuedOn: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.issuedOn),
+            issuerName: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.issuerName),
+            issuerNo: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.issuerNo),
             name: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.name),
             serialNo: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.serialNo),
             className: v2FindHeaderColumn(normalizedHeader, V2_MASTER_FIELD_ALIASES.className),
@@ -2750,6 +2759,9 @@ async function loadMasterData(input) {
             ? detectedIndexes
             : {
                 code: 0,
+                issuedOn: -1,
+                issuerName: -1,
+                issuerNo: -1,
                 name: 1,
                 serialNo: -1,
                 className: -1,
@@ -2793,6 +2805,9 @@ async function loadMasterData(input) {
         const newMasterDB = {};
         const newRawRows = [[
             "EQUIPMENT CODE",
+            "ISSUED ON",
+            "ISSUER NAME",
+            "ISSUER NO",
             "EQUIPMENT NAME",
             "LOCATION",
             "DUE DATE",
@@ -2831,6 +2846,9 @@ async function loadMasterData(input) {
             if (rowIsEmpty) return;
 
             const code = String(valueAt(sourceRow, indexes.code) || "").trim().toUpperCase();
+            const rawIssuedOn = valueAt(sourceRow, indexes.issuedOn);
+            const issuerName = String(valueAt(sourceRow, indexes.issuerName) || "").trim();
+            const issuerNo = String(valueAt(sourceRow, indexes.issuerNo) || "").trim();
             let name = String(valueAt(sourceRow, indexes.name) || "").trim();
             let location = String(valueAt(sourceRow, indexes.location) || "").trim();
             const serialNo = String(valueAt(sourceRow, indexes.serialNo) || "").trim();
@@ -2881,6 +2899,11 @@ async function loadMasterData(input) {
 
             if (!status) status = "N/A";
             if (!msa) msa = "N/A";
+
+            const issuedOn = v2NormalizeCalibrationDate(rawIssuedOn);
+            if (String(rawIssuedOn ?? "").trim() && !issuedOn) {
+                issues.push({ row: sourceLine, type: "Warning", message: `${code}: invalid Issued On date; value was not imported.` });
+            }
 
             const calibrationDate = v2NormalizeCalibrationDate(rawCalibrationDate);
             if (String(rawCalibrationDate ?? "").trim() && !calibrationDate) {
@@ -2951,6 +2974,9 @@ async function loadMasterData(input) {
 
             const normalizedRow = [
                 code,
+                issuedOn,
+                issuerName,
+                issuerNo,
                 name,
                 locationParts.loc,
                 due.due,
@@ -2992,6 +3018,9 @@ async function loadMasterData(input) {
                 calibratedBy || "N/A"
             ]);
             newMasterDB[code] = {
+                issuedOn,
+                issuerName,
+                issuerNo,
                 name,
                 serialNo,
                 className,
@@ -3090,8 +3119,8 @@ function v2RenderImportPreview() {
     const syncNote = v2El("importColumnSyncNote");
     if (syncNote) {
         const optionalText = optionalMissing.length
-            ? " CALBY is not present, so Calibrated By will display N/A until entered manually or supplied in a future file."
-            : " Optional calibrated-by data was also detected.";
+            ? ` Optional columns not found: ${optionalMissing.map(entry => entry.systemLabel).join(", ")}. These values remain blank until entered manually or supplied in a future file.`
+            : " All optional registration and calibrated-by columns were also detected.";
         syncNote.textContent = "Serial numbers are imported as text, including leading zeroes. YY-MMM due dates such as 22-Dec are synchronized as DEC-22." + optionalText;
     }
 
@@ -3582,7 +3611,7 @@ function v2BuildReportData(useFilters) {
     const completion = totalMaster ? `${Math.round((scanned / totalMaster) * 100)}%` : "0%";
 
     const summaryRows = [
-        ["GRID V3.3 INVENTORY AUDIT REPORT"],
+        ["GRID V3.4 INVENTORY AUDIT REPORT"],
         ["Generated", new Date().toLocaleString("en-MY")],
         ["Generated by", loggedInUser || "Unknown"],
         ["Scope", v2ReportFiltersDescription(filters, search)],
