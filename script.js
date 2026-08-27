@@ -981,38 +981,75 @@ function buildDisplayDue(monthValue, yearValue) {
 }
 
 function parseDueParts(dueValue) {
-    const cleanedDue = String(dueValue ?? "").trim().toUpperCase();
+    const originalValue = String(dueValue ?? "").trim();
+    const cleanedDue = originalValue
+        .normalize("NFKC")
+        .replace(/[\u2010-\u2015\u2212]/g, "-")
+        .replace(/[\u00A0\u202F]/g, " ")
+        .trim()
+        .toUpperCase();
 
     if (!cleanedDue) return null;
-    if (cleanedDue === "N/A") {
-        return {
-            due: "N/A",
-            month: "N/A",
-            year: "N/A"
-        };
+    if (cleanedDue === "N/A" || cleanedDue === "NA") {
+        return { due: "N/A", month: "N/A", year: "N/A" };
     }
 
-    let month = "N/A";
-    let year = "N/A";
-    let displayDue = cleanedDue;
+    const normalized = cleanedDue
+        .replace(/[.'’`]/g, "-")
+        .replace(/[,\s/_]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    const tokens = normalized.split("-").filter(Boolean);
 
-    if (cleanedDue.includes("/")) {
-        const parts = cleanedDue.split("/").map(part => part.trim()).filter(Boolean);
-        month = getMonthNameFromValue(parts[0]);
-        year = normalizeYearValue(parts.length >= 3 ? parts[2] : parts[1]);
-        displayDue = buildDisplayDue(month, year);
-    } else if (cleanedDue.includes("-")) {
-        const parts = cleanedDue.split("-").map(part => part.trim());
-        month = getMonthNameFromValue(parts[0]);
-        year = normalizeYearValue(parts[1]);
-        displayDue = buildDisplayDue(month, year);
-    }
-
-    return {
-        due: displayDue,
+    const monthFromToken = token => {
+        const value = String(token || "").trim().toUpperCase();
+        const numeric = Number(value);
+        if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) {
+            return MONTH_ORDER[numeric - 1];
+        }
+        const shortName = value.slice(0, 3);
+        return MONTH_ORDER.includes(shortName) ? shortName : null;
+    };
+    const yearFromToken = token => {
+        const value = String(token || "").trim();
+        if (/^\d{2}$/.test(value)) return `20${value}`;
+        if (/^\d{4}$/.test(value)) {
+            const yearNumber = Number(value);
+            return yearNumber >= 1900 && yearNumber <= 2200 ? value : null;
+        }
+        return null;
+    };
+    const makeResult = (month, year) => ({
+        due: `${month}-${year.slice(-2)}`,
         month,
         year
-    };
+    });
+
+    if (tokens.length === 2) {
+        const [first, second] = tokens;
+        const firstYear = yearFromToken(first);
+        const secondYear = yearFromToken(second);
+        const firstMonth = monthFromToken(first);
+        const secondMonth = monthFromToken(second);
+
+        if (firstYear && secondMonth) return makeResult(secondMonth, firstYear);
+        if (firstMonth && secondYear) return makeResult(firstMonth, secondYear);
+    }
+
+    if (tokens.length >= 3) {
+        const firstYear = yearFromToken(tokens[0]);
+        const lastYear = yearFromToken(tokens[tokens.length - 1]);
+        const firstMonth = monthFromToken(tokens[0]);
+        const middleMonth = monthFromToken(tokens[1]);
+
+        const startsWithFourDigitYear = /^\d{4}$/.test(tokens[0]);
+        if (startsWithFourDigitYear && firstYear && middleMonth) return makeResult(middleMonth, firstYear);
+        if (lastYear && middleMonth) return makeResult(middleMonth, lastYear);
+        if (lastYear && firstMonth) return makeResult(firstMonth, lastYear);
+        if (firstYear && middleMonth) return makeResult(middleMonth, firstYear);
+    }
+
+    return { due: originalValue || cleanedDue, month: "N/A", year: "N/A" };
 }
 
 function updateRawMasterFields(lookupCode, newLocation, newDue, newStatus) {
@@ -1550,6 +1587,12 @@ function applyAccessMode(mode) {
     if (clearCloudButton) {
         clearCloudButton.hidden = !developerMode;
         clearCloudButton.setAttribute('aria-hidden', String(!developerMode));
+    }
+
+    const sqlBackupPanel = document.getElementById('sqlBackupPanel');
+    if (sqlBackupPanel) {
+        sqlBackupPanel.hidden = !developerMode;
+        sqlBackupPanel.setAttribute('aria-hidden', String(!developerMode));
     }
 
     const logoutButton = document.getElementById('logoutButton');

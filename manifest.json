@@ -1,7 +1,7 @@
 {
-  "name": "GRID V3.4 Calibration & Inventory System",
-  "short_name": "GRID V3.4",
-  "description": "Scanner-based inventory auditing and equipment calibration records with editable master data, verification templates, and PDF archiving.",
+  "name": "GRID V4.3 Inventory System",
+  "short_name": "GRID Inventory",
+  "description": "Scanner-based inventory auditing with Firebase sync, missing-equipment notification, reporting, and SQLite backup/sync.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

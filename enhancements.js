@@ -1,5 +1,5 @@
 /*
- * GRID Calibration & Inventory System - V3.4 inventory experience layer
+ * GRID Inventory System - V4.3 inventory experience layer
  *
  * This file intentionally keeps the existing Firebase Realtime Database paths
  * and record shape used by script.js. It upgrades the scanning workflow,
@@ -24,6 +24,8 @@ let v2PendingMasterImport = null;
 let v2SyncInProgress = false;
 let v2IsSubmitting = false;
 let v2MissingMode = false;
+let v37MissingSelectionSnapshot = null;
+let v37MissingEmailSending = false;
 let v2ScannerInputInitialized = false;
 let v2AudioContext = null;
 
@@ -401,7 +403,14 @@ function v2FilterHasStructuredSelection(filters) {
 }
 
 function v2IsModalOpen() {
-    return Boolean(v2El("qcModal")?.classList.contains("is-open"));
+    return Boolean(
+        v2El("qcModal")?.classList.contains("is-open") ||
+        v2El("missingEmailModal")?.classList.contains("is-open")
+    );
+}
+
+function v37IsMissingEmailModalOpen() {
+    return Boolean(v2El("missingEmailModal")?.classList.contains("is-open"));
 }
 
 function v2IsImportModalOpen() {
@@ -1644,7 +1653,7 @@ function updateVerificationState() {
             ? "Equipment is marked missing. The other verification checks are not required."
             : isComplete
                 ? "All verification checks are complete."
-                : `${completed} of 4 verification checks completed, or use Mark Missing & Save.`;
+                : `${completed} of 4 verification checks completed, or use Mark Missing & Notify.`;
     }
 
     if (saveButton) {
@@ -1663,11 +1672,11 @@ function updateVerificationState() {
         missingButton.textContent = v2IsSubmitting && v2MissingMode
             ? "Saving missing..."
             : v2MissingMode && editMode
-                ? "Keep Missing & Save"
-                : "Mark Missing & Save";
+                ? "Keep Missing & Notify"
+                : "Mark Missing & Notify";
         missingButton.title = unavailable
             ? "Only registered equipment can be marked missing."
-            : "Save this item as missing without completing the verification checks.";
+            : "Save this item as missing and prepare an email for a selected production-group recipient.";
     }
 
     v2RemarkSuggestion = v2BuildRemarkSuggestion();
@@ -1732,12 +1741,18 @@ function renderQCModal(auditRecord = null) {
 
     const auditCategory = auditRecord ? v2AuditCategory(auditRecord) : "";
     const recordIsMissing = auditCategory === "MISSING";
+    const missingNotificationMeta = recordIsMissing && auditRecord?.missingEmailRecipient ? `
+        <div><span>Notification group</span><strong>${escapeHtml(auditRecord.missingEmailGroup || "-")}</strong></div>
+        <div><span>Notification recipient</span><strong>${escapeHtml(auditRecord.missingEmailRecipient)}</strong></div>
+        <div><span>Email status</span><strong>${escapeHtml(auditRecord.missingEmailStatus || "DRAFT PREPARED")}</strong></div>
+    ` : "";
     const detailMeta = isEditMode ? `
         <div class="scan-detail-meta">
             <div><span>Scanned time</span><strong>${escapeHtml(auditRecord.time || "-")}</strong></div>
             <div><span>Scanned by</span><strong>${escapeHtml(auditRecord.pic || "-")}</strong></div>
             <div><span>Audit result</span><strong>${auditCategory}</strong></div>
             <div><span>Recorded equipment status</span><strong>${escapeHtml(auditRecord.updatedStatus || currentItem.status || "N/A")}</strong></div>
+            ${missingNotificationMeta}
         </div>
     ` : "";
 
@@ -1870,7 +1885,529 @@ function v2FormatMissingRemark(remarkValue) {
     return `Equipment missing; ${cleaned}`;
 }
 
-async function v2SaveAuditRecord({ isMissing = false } = {}) {
+/* -------------------------------------------------------------------------- */
+/* Missing-equipment production email workflow                                 */
+/* -------------------------------------------------------------------------- */
+
+function v37EmailDirectory() {
+    const source = window.GRID_MISSING_EMAIL_DIRECTORY;
+    return source && typeof source === "object" ? source : {};
+}
+
+function v37EmailGroupOrder() {
+    const configured = window.GRID_MISSING_EMAIL_GROUP_ORDER;
+    const groups = Array.isArray(configured) ? configured : Object.keys(v37EmailDirectory());
+    return groups.filter(group => Array.isArray(v37EmailDirectory()[group]) && v37EmailDirectory()[group].length);
+}
+
+function v37NormalizeProductionToken(value) {
+    return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/&/g, "AND")
+        .replace(/[^A-Z0-9]+/g, "");
+}
+
+function v37ResolveProductionEmailGroup(prodType, location) {
+    const tokens = [prodType, location]
+        .flatMap(value => {
+            const original = String(value || "").trim();
+            const pieces = original.split(/[-_/\\\s]+/g).filter(Boolean);
+            return [original, ...pieces];
+        })
+        .map(v37NormalizeProductionToken)
+        .filter(Boolean);
+
+    const rules = [
+        ["SPAREPART", token => /^(SPAREPART|SPARE|SPART)/.test(token)],
+        ["WORKSHOP", token => /^(WORKSHOP|WSHOP)/.test(token)],
+        ["UTILITY", token => /^(UTILITY|ULTILITY)/.test(token)],
+        ["RND", token => /^(RND|RANDD|RD)$/.test(token)],
+        ["IQC", token => /^(IQC|IPC)/.test(token)],
+        ["OQC", token => /^(OQC|QC)$/.test(token)],
+        ["LQH", token => /^(LQH|LQW|LTM)/.test(token)],
+        ["PLT", token => /^(PLT|PLATING)/.test(token)],
+        ["DCC", token => /^(DCC|DLW|DM|HAC)/.test(token)],
+        ["CM", token => /^(CM|MCW|MC|2MC|MIDCORE|MIDDLECORE|COREPOWDER)/.test(token)],
+        ["FP", token => /^(FP|F1518)/.test(token)],
+        ["RF", token => /^RF/.test(token)],
+        ["AG", token => /^AG/.test(token)],
+        ["CAL", token => /^CAL/.test(token)],
+        ["WH", token => /^(WH|MWH|FWH)/.test(token)],
+        ["ENG", token => /^(ENG|TECH)/.test(token)],
+        ["LAB", token => /^LAB/.test(token)]
+    ];
+
+    for (const [group, matches] of rules) {
+        if (tokens.some(matches) && v37EmailDirectory()[group]?.length) return group;
+    }
+
+    return "";
+}
+
+function v37EmailPreferenceKey(group) {
+    return `grid_missing_email_recipients_${v37NormalizeProductionToken(group)}`;
+}
+
+function v37LegacyEmailPreferenceKey(group) {
+    return `grid_missing_email_recipient_${v37NormalizeProductionToken(group)}`;
+}
+
+function v40NormalizeRecipientList(value) {
+    const values = Array.isArray(value)
+        ? value
+        : String(value || "").split(/[;,]+/g);
+    return Array.from(new Set(values
+        .map(item => String(item || "").trim().toLowerCase())
+        .filter(Boolean)));
+}
+
+function v37ReadPreferredRecipient(group) {
+    try {
+        const raw = window.localStorage.getItem(v37EmailPreferenceKey(group));
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return v40NormalizeRecipientList(parsed);
+            } catch (error) {
+                return v40NormalizeRecipientList(raw);
+            }
+        }
+        const legacy = window.localStorage.getItem(v37LegacyEmailPreferenceKey(group)) || "";
+        return v40NormalizeRecipientList(legacy);
+    } catch (error) {
+        return [];
+    }
+}
+
+function v37RememberPreferredRecipient(group, recipients) {
+    try {
+        const normalized = v40NormalizeRecipientList(recipients);
+        window.localStorage.setItem(v37EmailPreferenceKey(group), JSON.stringify(normalized));
+        window.localStorage.removeItem(v37LegacyEmailPreferenceKey(group));
+    } catch (error) {
+        // Saved preferences are convenient but are not required for the workflow.
+    }
+}
+
+function v37PopulateMissingEmailGroups(preferredGroup = "") {
+    const select = v2El("missingEmailGroupSelect");
+    if (!select) return "";
+
+    const groups = v37EmailGroupOrder();
+    select.innerHTML = '<option value="">Select production email group</option>' + groups.map(group => {
+        const label = group === "RND" ? "RND / R&D" : group === "SPAREPART" ? "SPARE PART" : group;
+        return `<option value="${escapeHtml(group)}">${escapeHtml(label)}</option>`;
+    }).join("");
+
+    const equipmentFields = currentItem
+        ? v2GetExportEquipmentFields(currentItem.barcode, currentItem)
+        : { production: "", location: "" };
+    const detected = v37ResolveProductionEmailGroup(equipmentFields.production, equipmentFields.location);
+    const validPreferred = groups.includes(preferredGroup) ? preferredGroup : "";
+    select.value = validPreferred || detected || "";
+    return select.value;
+}
+
+function v40GetSelectedMissingEmailRecipients() {
+    const list = v2El("missingEmailRecipientList");
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('input[type="checkbox"][data-missing-email-recipient]:checked'))
+        .map(input => String(input.value || "").trim().toLowerCase())
+        .filter(Boolean);
+}
+
+function v37PopulateMissingEmailRecipients(preferredRecipients = []) {
+    const groupSelect = v2El("missingEmailGroupSelect");
+    const recipientList = v2El("missingEmailRecipientList");
+    const countText = v2El("missingEmailRecipientCount");
+    if (!groupSelect || !recipientList) return [];
+
+    const group = groupSelect.value;
+    const recipients = Array.isArray(v37EmailDirectory()[group])
+        ? v37EmailDirectory()[group].map(email => String(email || "").trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    const requested = v40NormalizeRecipientList(preferredRecipients);
+    const savedPreference = v37ReadPreferredRecipient(group);
+    const initialSelected = requested.length
+        ? requested.filter(email => recipients.includes(email))
+        : savedPreference.filter(email => recipients.includes(email));
+    const selected = initialSelected.length
+        ? initialSelected
+        : (recipients.length === 1 ? [recipients[0]] : []);
+
+    recipientList.innerHTML = recipients.length
+        ? recipients.map((email, index) => {
+            const checked = selected.includes(email) ? " checked" : "";
+            return `<label class="missing-email-recipient-option" for="missingEmailRecipient_${index}">`
+                + `<input id="missingEmailRecipient_${index}" type="checkbox" data-missing-email-recipient value="${escapeHtml(email)}" onchange="v37HandleMissingEmailRecipientChange()"${checked}>`
+                + `<span>${escapeHtml(email)}</span></label>`;
+        }).join("")
+        : `<div class="missing-email-recipient-empty">${group ? "No unhighlighted recipient is configured for this group." : "Select a production email group first."}</div>`;
+
+    if (countText) {
+        const selectedCount = selected.length;
+        countText.textContent = recipients.length
+            ? `${recipients.length} unhighlighted recipient${recipients.length === 1 ? "" : "s"} available for ${group}. ${selectedCount} selected.`
+            : group
+                ? `No unhighlighted recipient is configured for ${group}.`
+                : "Select a production email group first.";
+    }
+
+    v37UpdateMissingEmailPreview();
+    return selected;
+}
+
+function v40SelectAllMissingEmailRecipients() {
+    const list = v2El("missingEmailRecipientList");
+    if (!list) return;
+    list.querySelectorAll('input[type="checkbox"][data-missing-email-recipient]').forEach(input => {
+        input.checked = true;
+    });
+    v37HandleMissingEmailRecipientChange();
+}
+
+function v40ClearMissingEmailRecipients() {
+    const list = v2El("missingEmailRecipientList");
+    if (!list) return;
+    list.querySelectorAll('input[type="checkbox"][data-missing-email-recipient]').forEach(input => {
+        input.checked = false;
+    });
+    v37HandleMissingEmailRecipientChange();
+}
+
+function v37BuildMissingEmailDraft(group, recipients) {
+    if (!currentItem) return null;
+
+    const selectedRecipients = v40NormalizeRecipientList(recipients);
+    if (!selectedRecipients.length) return null;
+
+    const fields = v2GetExportEquipmentFields(currentItem.barcode, currentItem);
+    const reportedAt = new Date();
+    const equipmentCode = fields.code || currentItem.barcode || "N/A";
+    const equipmentName = fields.name || currentItem.name || "N/A";
+    const registeredLocation = fields.location || currentItem.loc || "N/A";
+    const config = window.GRID_MISSING_EMAIL_CONFIG || {};
+    const ccRecipients = Array.isArray(config.ccRecipients)
+        ? config.ccRecipients.map(value => String(value || "").trim().toLowerCase()).filter(Boolean)
+        : [];
+    const subject = `Missing Equipment Notification - ${equipmentCode}`;
+    const body = [
+        "Dear Production Team,",
+        "",
+        "Good day.",
+        "",
+        "During the inventory check, the following equipment could not be located at its registered location:",
+        "",
+        `Equipment Name: ${equipmentName}`,
+        `Equipment Code: ${equipmentCode}`,
+        `Registered Location: ${registeredLocation}`,
+        "",
+        "Kindly assist in checking the equipment's current location and inform the Calibration once confirmed.",
+        "",
+        "Thank you for your kind cooperation."
+    ].join("\n");
+
+    return {
+        group,
+        recipients: selectedRecipients,
+        recipient: selectedRecipients.join("; "),
+        ccRecipients,
+        subject,
+        body,
+        preparedAt: reportedAt.toISOString(),
+        method: "OUTLOOK_WEB_DRAFT"
+    };
+}
+
+function v37UpdateMissingEmailPreview() {
+    const group = v2El("missingEmailGroupSelect")?.value || "";
+    const recipients = v40GetSelectedMissingEmailRecipients();
+    const draft = group && recipients.length ? v37BuildMissingEmailDraft(group, recipients) : null;
+    const to = v2El("missingEmailToPreview");
+    const cc = v2El("missingEmailCcPreview");
+    const subject = v2El("missingEmailSubjectPreview");
+    const body = v2El("missingEmailBodyPreview");
+    const confirm = v2El("confirmMissingEmailButton");
+    const countText = v2El("missingEmailRecipientCount");
+    const available = Array.isArray(v37EmailDirectory()[group]) ? v37EmailDirectory()[group].length : 0;
+
+    if (to) to.value = draft?.recipients?.join("; ") || "";
+    if (cc) cc.value = draft?.ccRecipients?.join("; ") || "";
+    if (subject) subject.value = draft?.subject || "";
+    if (body) body.value = draft?.body || "";
+    if (countText && available) {
+        countText.textContent = `${available} unhighlighted recipient${available === 1 ? "" : "s"} available for ${group}. ${recipients.length} selected.`;
+    }
+    if (confirm) {
+        confirm.disabled = !draft || v37MissingEmailSending;
+        confirm.textContent = v37MissingEmailSending
+            ? "Saving missing record..."
+            : `Save Missing & Open Email${recipients.length > 1 ? ` (${recipients.length})` : ""}`;
+    }
+}
+
+function v37HandleMissingEmailGroupChange() {
+    v37PopulateMissingEmailRecipients([]);
+}
+
+function v37HandleMissingEmailRecipientChange() {
+    v37UpdateMissingEmailPreview();
+}
+
+function v37SetMissingEmailSummary() {
+    if (!currentItem) return;
+    const fields = v2GetExportEquipmentFields(currentItem.barcode, currentItem);
+    v2SetText("missingEmailEquipmentCode", fields.code || currentItem.barcode || "-");
+    v2SetText("missingEmailEquipmentName", fields.name || currentItem.name || "-");
+    v2SetText("missingEmailProduction", fields.production || "N/A");
+    v2SetText("missingEmailLocation", fields.location || currentItem.loc || "N/A");
+}
+
+function v37OpenMissingEmailModal() {
+    const modal = v2El("missingEmailModal");
+    if (!modal || !currentItem) return false;
+
+    const groups = v37EmailGroupOrder();
+    if (!groups.length) {
+        showToast("No unhighlighted production email recipients are configured.", "error", 5200);
+        return false;
+    }
+
+    v37SetMissingEmailSummary();
+    const preferredGroup = String(currentAuditEditRecord?.missingEmailGroup || "").trim().toUpperCase();
+    const preferredRecipients = v40NormalizeRecipientList(
+        currentAuditEditRecord?.missingEmailRecipients || currentAuditEditRecord?.missingEmailRecipient || ""
+    );
+    v37PopulateMissingEmailGroups(preferredGroup);
+    v37PopulateMissingEmailRecipients(preferredRecipients);
+
+    modal.hidden = false;
+    modal.style.display = "";
+    modal.classList.add("is-open");
+    window.setTimeout(() => {
+        const groupSelect = v2El("missingEmailGroupSelect");
+        const firstRecipient = v2El("missingEmailRecipientList")?.querySelector('input[type="checkbox"][data-missing-email-recipient]');
+        (groupSelect?.value ? firstRecipient : groupSelect)?.focus();
+    }, 50);
+    return true;
+}
+
+function v37HideMissingEmailModal() {
+    const modal = v2El("missingEmailModal");
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.style.display = "";
+    modal.hidden = true;
+}
+
+function closeMissingEmailModal() {
+    if (v37MissingEmailSending) return;
+    v37HideMissingEmailModal();
+
+    if (v37MissingSelectionSnapshot) {
+        selectedLoc = v37MissingSelectionSnapshot.selectedLoc;
+        selectedStickerLoc = v37MissingSelectionSnapshot.selectedStickerLoc;
+        selectedDue = v37MissingSelectionSnapshot.selectedDue;
+        selectedMsa = v37MissingSelectionSnapshot.selectedMsa;
+        v2MissingMode = v37MissingSelectionSnapshot.v2MissingMode;
+    } else {
+        v2MissingMode = false;
+        v2ResetNormalVerification();
+    }
+
+    v37MissingSelectionSnapshot = null;
+    v2ApplyToggleClasses();
+    updateVerificationState();
+    v2El("btnMissingEquipment")?.focus();
+}
+
+function v37OpenComposePlaceholder() {
+    let popup = null;
+    try {
+        popup = window.open("about:blank", "gridMissingEquipmentEmail");
+        if (popup) {
+            popup.document.title = "GRID missing-equipment email";
+            popup.document.body.innerHTML = '<div style="font-family:Arial,sans-serif;padding:28px;color:#4e342e"><h2>GRID</h2><p>Saving the missing-equipment record and preparing the email...</p></div>';
+        }
+    } catch (error) {
+        popup = null;
+    }
+    return popup;
+}
+
+function v37OutlookComposeUrl(draft) {
+    const config = window.GRID_MISSING_EMAIL_CONFIG || {};
+    const base = config.outlookComposeUrl || "https://outlook.office.com/mail/deeplink/compose";
+    const to = Array.isArray(draft.recipients) ? draft.recipients.join(";") : String(draft.recipient || "");
+    const cc = Array.isArray(draft.ccRecipients) ? draft.ccRecipients.join(";") : "";
+    const params = [
+        `to=${encodeURIComponent(to)}`,
+        `cc=${encodeURIComponent(cc)}`,
+        `subject=${encodeURIComponent(draft.subject || "")}`,
+        `body=${encodeURIComponent(draft.body || "")}`
+    ].join("&");
+    return `${base}?${params}`;
+}
+
+function v37MailtoUrl(draft) {
+    const recipients = Array.isArray(draft.recipients) ? draft.recipients : v40NormalizeRecipientList(draft.recipient);
+    const to = recipients.map(email => encodeURIComponent(email)).join(",");
+    const cc = Array.isArray(draft.ccRecipients) ? draft.ccRecipients.join(",") : "";
+    return `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
+}
+
+function v37OpenPreparedEmail(draft, popup) {
+    const config = window.GRID_MISSING_EMAIL_CONFIG || {};
+    const useOutlookWeb = String(config.composeMode || "outlook-web").toLowerCase() !== "mailto";
+
+    try {
+        if (useOutlookWeb && popup && !popup.closed) {
+            popup.location.replace(v37OutlookComposeUrl(draft));
+            return true;
+        }
+
+        if (popup && !popup.closed) popup.close();
+        const link = document.createElement("a");
+        link.href = v37MailtoUrl(draft);
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return true;
+    } catch (error) {
+        console.warn("Unable to open the prepared email", error);
+        try {
+            if (popup && !popup.closed) popup.close();
+        } catch (closeError) {
+            // Ignore popup close failures.
+        }
+        return false;
+    }
+}
+
+async function v37UpdateMissingEmailStatus(auditData, status, extra = {}) {
+    if (!auditData) return;
+    const patch = {
+        missingEmailStatus: status,
+        ...extra
+    };
+    Object.assign(auditData, patch);
+
+    try {
+        if (isOnline && auditData.cloudId) {
+            await db.ref(`audit_history/${auditData.cloudId}`).update(patch);
+        } else if (typeof updateLocalAuditRecord === "function") {
+            updateLocalAuditRecord(auditData);
+        }
+    } catch (error) {
+        console.warn("Unable to update missing email status", error);
+    }
+}
+
+async function v37SendMissingEmailWebhook(draft, auditData) {
+    const webhookUrl = String(window.GRID_MISSING_EMAIL_CONFIG?.webhookUrl || "").trim();
+    if (!webhookUrl) return false;
+
+    const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            event: "MISSING_EQUIPMENT",
+            recipient: draft.recipient,
+            recipients: draft.recipients || v40NormalizeRecipientList(draft.recipient),
+            ccRecipients: draft.ccRecipients || [],
+            group: draft.group,
+            subject: draft.subject,
+            body: draft.body,
+            audit: auditData
+        })
+    });
+
+    if (!response.ok) throw new Error(`Email service returned HTTP ${response.status}.`);
+    return true;
+}
+
+async function confirmMissingEmailAndSave() {
+    if (!currentItem || v2IsSubmitting || v37MissingEmailSending) return;
+
+    const group = v2El("missingEmailGroupSelect")?.value || "";
+    const recipients = v40GetSelectedMissingEmailRecipients();
+    const allowedRecipients = Array.isArray(v37EmailDirectory()[group])
+        ? v37EmailDirectory()[group].map(email => String(email || "").trim().toLowerCase())
+        : [];
+    const invalidRecipients = recipients.filter(recipient => !allowedRecipients.includes(recipient));
+
+    if (!group || !recipients.length || invalidRecipients.length) {
+        showToast("Select one or more unhighlighted recipients from the correct production email group.", "warning", 4800);
+        v2Feedback("fail");
+        return;
+    }
+
+    const draft = v37BuildMissingEmailDraft(group, recipients);
+    if (!draft) return;
+
+    const webhookUrl = String(window.GRID_MISSING_EMAIL_CONFIG?.webhookUrl || "").trim();
+    const popup = webhookUrl ? null : v37OpenComposePlaceholder();
+    v37RememberPreferredRecipient(group, recipients);
+    v37MissingEmailSending = true;
+    v37UpdateMissingEmailPreview();
+
+    const emailMetadata = {
+        group: draft.group,
+        recipient: draft.recipient,
+        recipients: draft.recipients || [],
+        ccRecipients: draft.ccRecipients || [],
+        subject: draft.subject,
+        method: webhookUrl ? "WEBHOOK" : draft.method,
+        status: webhookUrl ? "SEND REQUESTED" : "DRAFT PREPARED",
+        preparedAt: draft.preparedAt
+    };
+
+    try {
+        const auditData = await v2SaveAuditRecord({ isMissing: true, missingEmail: emailMetadata });
+        if (!auditData) {
+            if (popup && !popup.closed) popup.close();
+            return;
+        }
+
+        v37MissingSelectionSnapshot = null;
+        const recipientLabel = `${recipients.length} recipient${recipients.length === 1 ? "" : "s"}`;
+
+        if (webhookUrl && isOnline) {
+            try {
+                await v37SendMissingEmailWebhook(draft, auditData);
+                await v37UpdateMissingEmailStatus(auditData, "SENT", {
+                    missingEmailSentAt: new Date().toISOString()
+                });
+                showToast(`Missing-equipment email sent to ${recipientLabel}.`, "success", 5200);
+            } catch (error) {
+                await v37UpdateMissingEmailStatus(auditData, "SEND FAILED", {
+                    missingEmailError: String(error.message || error).slice(0, 300)
+                });
+                showToast(`Missing record saved, but the email service failed: ${error.message || "Unknown error"}`, "error", 6500);
+            }
+        } else {
+            const opened = v37OpenPreparedEmail(draft, popup);
+            await v37UpdateMissingEmailStatus(auditData, opened ? "DRAFT OPENED" : "DRAFT OPEN FAILED", {
+                missingEmailOpenedAt: opened ? new Date().toISOString() : ""
+            });
+            showToast(
+                opened
+                    ? `Missing record saved. Email draft opened for ${recipientLabel}; review it and press Send.`
+                    : `Missing record saved, but the email draft could not be opened for ${recipientLabel}.`,
+                opened ? "success" : "warning",
+                6500
+            );
+        }
+    } finally {
+        v37MissingEmailSending = false;
+        v37UpdateMissingEmailPreview();
+    }
+}
+
+async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}) {
     if (!currentItem || v2IsSubmitting) return;
 
     v2IsSubmitting = true;
@@ -1955,7 +2492,22 @@ async function v2SaveAuditRecord({ isMissing = false } = {}) {
             isFail: abnormal,
             isMissing,
             auditStatus: isMissing ? "MISSING" : abnormal ? "ABNORMAL" : "PASS",
-            isUnregistered: currentItem.isUnregistered
+            isUnregistered: currentItem.isUnregistered,
+            ...(isMissing && missingEmail ? {
+                missingEmailGroup: missingEmail.group || "",
+                missingEmailRecipient: missingEmail.recipient || "",
+                missingEmailRecipients: Array.isArray(missingEmail.recipients)
+                    ? missingEmail.recipients.join("; ")
+                    : (missingEmail.recipient || ""),
+                missingEmailRecipientCount: Array.isArray(missingEmail.recipients)
+                    ? missingEmail.recipients.length
+                    : v40NormalizeRecipientList(missingEmail.recipient).length,
+                missingEmailCc: Array.isArray(missingEmail.ccRecipients) ? missingEmail.ccRecipients.join("; ") : "",
+                missingEmailSubject: missingEmail.subject || "",
+                missingEmailMethod: missingEmail.method || "OUTLOOK_WEB_DRAFT",
+                missingEmailStatus: missingEmail.status || "DRAFT PREPARED",
+                missingEmailPreparedAt: missingEmail.preparedAt || new Date().toISOString()
+            } : {})
         };
 
         const resultText = isMissing ? "missing" : abnormal ? "abnormal" : "pass";
@@ -1987,6 +2539,7 @@ async function v2SaveAuditRecord({ isMissing = false } = {}) {
 
         v2Feedback(feedbackType);
         closeModal();
+        return auditData;
     } catch (error) {
         console.error("Unable to save audit record", error);
         showToast(`Unable to save the record: ${error.message || "Unknown error"}`, "error", 5200);
@@ -2001,7 +2554,7 @@ async function submitQC() {
 
     const { isComplete } = v2NormalVerificationState();
     if (!isComplete) {
-        showToast("Complete all four verification checks, or use Mark Missing & Save.", "warning");
+        showToast("Complete all four verification checks, or use Mark Missing & Notify.", "warning");
         v2Feedback("fail");
         return;
     }
@@ -2011,7 +2564,7 @@ async function submitQC() {
 }
 
 async function submitMissingEquipment() {
-    if (!currentItem || v2IsSubmitting) return;
+    if (!currentItem || v2IsSubmitting || v37MissingEmailSending) return;
 
     if (currentItem.isUnregistered) {
         showToast("Only registered equipment can be marked missing.", "warning");
@@ -2019,6 +2572,13 @@ async function submitMissingEquipment() {
         return;
     }
 
+    v37MissingSelectionSnapshot = {
+        selectedLoc,
+        selectedStickerLoc,
+        selectedDue,
+        selectedMsa,
+        v2MissingMode
+    };
     v2MissingMode = true;
     selectedLoc = "MISSING";
     selectedStickerLoc = "N/A";
@@ -2027,11 +2587,16 @@ async function submitMissingEquipment() {
     v2ApplyToggleClasses();
     updateVerificationState();
 
-    await v2SaveAuditRecord({ isMissing: true });
+    if (!v37OpenMissingEmailModal()) {
+        closeMissingEmailModal();
+    }
 }
 
 function closeModal() {
     const barcode = currentItem?.barcode || "";
+    v37HideMissingEmailModal();
+    v37MissingSelectionSnapshot = null;
+    v37MissingEmailSending = false;
 
     if (currentItem && currentLockOwned) {
         releaseLock(currentItem.barcode);
@@ -2426,47 +2991,79 @@ function v2NormalizeImportDue(rawValue) {
         }
     }
 
-    const value = String(rawValue ?? "").trim().toUpperCase();
-    if (!value || value === "N/A") {
+    const originalValue = String(rawValue ?? "").trim();
+    const value = originalValue
+        .normalize("NFKC")
+        .replace(/[\u2010-\u2015\u2212]/g, "-")
+        .replace(/[\u00A0\u202F]/g, " ")
+        .trim()
+        .toUpperCase();
+
+    if (!value || value === "N/A" || value === "NA") {
         return { valid: false, due: "N/A", month: "N/A", year: "N/A", reason: "Missing due date" };
     }
 
-    let match = value.match(/^(\d{2}|\d{4})[\s\/-]([A-Z]{3,9})$/);
-    if (match) {
-        const month = v2MonthFromToken(match[2]);
-        const year = match[1].length === 2 ? `20${match[1]}` : match[1];
-        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
+    const normalized = value
+        .replace(/[.'’`]/g, "-")
+        .replace(/[,\s/_]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    const tokens = normalized.split("-").filter(Boolean);
+
+    const yearFromToken = token => {
+        const text = String(token || "").trim();
+        if (/^\d{2}$/.test(text)) return `20${text}`;
+        if (/^\d{4}$/.test(text)) {
+            const yearNumber = Number(text);
+            return yearNumber >= 1900 && yearNumber <= 2200 ? text : null;
+        }
+        return null;
+    };
+    const result = (month, year) => ({
+        valid: true,
+        due: `${month}-${year.slice(-2)}`,
+        month,
+        year
+    });
+
+    if (tokens.length === 2) {
+        const [first, second] = tokens;
+        const firstMonth = v2MonthFromToken(first);
+        const secondMonth = v2MonthFromToken(second);
+        const firstYear = yearFromToken(first);
+        const secondYear = yearFromToken(second);
+
+        // The current master list uses YY-MMM (for example 22-Dec).
+        if (firstYear && secondMonth) return result(secondMonth, firstYear);
+        // Existing Firebase exports and older files may use MMM-YY (for example DEC-22).
+        if (firstMonth && secondYear) return result(firstMonth, secondYear);
     }
 
-    match = value.match(/^([A-Z]{3,9})[\s\/-](\d{2}|\d{4})$/);
-    if (match) {
-        const month = v2MonthFromToken(match[1]);
-        const year = match[2].length === 2 ? `20${match[2]}` : match[2];
-        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
+    if (tokens.length >= 3) {
+        const firstYear = yearFromToken(tokens[0]);
+        const lastYear = yearFromToken(tokens[tokens.length - 1]);
+        const firstMonth = v2MonthFromToken(tokens[0]);
+        const middleMonth = v2MonthFromToken(tokens[1]);
+
+        const startsWithFourDigitYear = /^\d{4}$/.test(tokens[0]);
+        // YYYY-MM-DD, YYYY-MMM-DD, or YYYY/MM/DD.
+        if (startsWithFourDigitYear && firstYear && middleMonth) return result(middleMonth, firstYear);
+        // DD-MMM-YYYY or DD-MMM-YY. This must be checked before a two-digit
+        // first token is treated as a year.
+        if (lastYear && middleMonth) return result(middleMonth, lastYear);
+        // MMM-DD-YYYY or MM-DD-YYYY.
+        if (lastYear && firstMonth) return result(firstMonth, lastYear);
+        // Less common YY-MMM-DD form.
+        if (firstYear && middleMonth) return result(middleMonth, firstYear);
     }
 
-    match = value.match(/^(\d{1,2})[\/-](\d{2}|\d{4})$/);
-    if (match) {
-        const month = v2MonthFromToken(match[1]);
-        const year = match[2].length === 2 ? `20${match[2]}` : match[2];
-        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
-    }
-
-    match = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
-    if (match) {
-        const month = v2MonthFromToken(match[1]);
-        const year = match[3].length === 2 ? `20${match[3]}` : match[3];
-        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
-    }
-
-    match = value.match(/^(\d{4})[\/-](\d{1,2})(?:[\/-]\d{1,2})?$/);
-    if (match) {
-        const month = v2MonthFromToken(match[2]);
-        const year = match[1];
-        if (month) return { valid: true, due: `${month}-${year.slice(-2)}`, month, year };
-    }
-
-    return { valid: false, due: "N/A", month: "N/A", year: "N/A", reason: `Unrecognized due date: ${value}` };
+    return {
+        valid: false,
+        due: "N/A",
+        month: "N/A",
+        year: "N/A",
+        reason: `Unrecognized due date: ${originalValue || value}`
+    };
 }
 
 function v2NormalizeCell(value) {
@@ -2706,7 +3303,7 @@ async function v2ReadMasterFileRows(file) {
     return rows;
 }
 
-async function loadMasterData(input) {
+async function loadMasterDataV36(input) {
     const file = input?.files?.[0];
     if (!file) return;
 
@@ -3121,7 +3718,7 @@ function v2RenderImportPreview() {
         const optionalText = optionalMissing.length
             ? ` Optional columns not found: ${optionalMissing.map(entry => entry.systemLabel).join(", ")}. These values remain blank until entered manually or supplied in a future file.`
             : " All optional registration and calibrated-by columns were also detected.";
-        syncNote.textContent = "Serial numbers are imported as text, including leading zeroes. YY-MMM due dates such as 22-Dec are synchronized as DEC-22." + optionalText;
+        syncNote.textContent = "Serial numbers are imported as text, including leading zeroes. Due dates in YY-MMM or MMM-YY format, such as 22-Dec, DEC-22, and Feb-29, are synchronized as MMM-YY." + optionalText;
     }
 
     const issuePanel = v2El("importIssuePanel");
@@ -3439,7 +4036,7 @@ function exportFilteredCsv() {
             data.search ||
             "filtered"
         );
-        const filename = `Calibration_Equipment_Status_${scope}_${v2TimestampForFilename()}.csv`;
+        const filename = `Inventory_Equipment_Status_${scope}_${v2TimestampForFilename()}.csv`;
 
         v2DownloadCsv([data.header, ...data.rows], filename);
         showToast(
@@ -3611,7 +4208,7 @@ function v2BuildReportData(useFilters) {
     const completion = totalMaster ? `${Math.round((scanned / totalMaster) * 100)}%` : "0%";
 
     const summaryRows = [
-        ["GRID V3.4 INVENTORY AUDIT REPORT"],
+        ["GRID V4.3 INVENTORY AUDIT REPORT"],
         ["Generated", new Date().toLocaleString("en-MY")],
         ["Generated by", loggedInUser || "Unknown"],
         ["Scope", v2ReportFiltersDescription(filters, search)],
@@ -3670,7 +4267,7 @@ function v2WriteReport(useFilters) {
                 "filtered"
             )
             : "full";
-        const filename = `Calibration_Audit_${scope}_${v2TimestampForFilename()}.xlsx`;
+        const filename = `Inventory_Audit_${scope}_${v2TimestampForFilename()}.xlsx`;
 
         XLSX.writeFile(workbook, filename);
         showToast(`Report created: ${filename}`, "success", 4200);
@@ -3691,6 +4288,11 @@ function exportFilteredOnly() {
 /* -------------------------------------------------------------------------- */
 /* Startup wiring                                                              */
 /* -------------------------------------------------------------------------- */
+
+// Explicit stable import entry point retained in V4.3. The versioned script URL prevents an older
+// service-worker copy from silently handling a newly deployed master file.
+window.loadMasterDataV36 = loadMasterDataV36;
+window.loadMasterData = loadMasterDataV36;
 
 document.addEventListener("DOMContentLoaded", () => {
     const rememberedUser = localStorage.getItem("grid_last_user");
@@ -3738,7 +4340,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            if (v2IsImportModalOpen()) {
+            if (v37IsMissingEmailModalOpen()) {
+                closeMissingEmailModal();
+            } else if (v2IsImportModalOpen()) {
                 closeImportModal();
             } else if (v2IsModalOpen()) {
                 closeModal();
@@ -3753,6 +4357,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     v2El("qcModal")?.addEventListener("click", event => {
         if (event.target === v2El("qcModal")) closeModal();
+    });
+
+    v2El("missingEmailModal")?.addEventListener("click", event => {
+        if (event.target === v2El("missingEmailModal")) closeMissingEmailModal();
     });
 
     v2El("importModal")?.addEventListener("click", event => {
@@ -3779,7 +4387,9 @@ document.addEventListener("DOMContentLoaded", () => {
     updateDisplay();
 
     if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
-        navigator.serviceWorker.register("./sw.js").catch(() => {
+        navigator.serviceWorker.register("./sw.js?v=4.2.0", { updateViaCache: "none" })
+            .then(registration => registration.update())
+            .catch(() => {
             // The app remains fully usable without service worker support.
         });
     }
