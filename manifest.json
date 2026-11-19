@@ -1,5 +1,5 @@
 {
-  "name": "GRID V4.3 Inventory System",
+  "name": "GRID V4.6 Inventory System",
   "short_name": "GRID Inventory",
   "description": "Scanner-based inventory auditing with Firebase sync, missing-equipment notification, reporting, and SQLite backup/sync.",
   "start_url": "./index.html",

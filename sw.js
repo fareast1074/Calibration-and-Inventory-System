@@ -1,5 +1,5 @@
-const CACHE_NAME = "grid-v4-3-inventory-shell-1";
-const ASSET_VERSION = "4.3.0";
+const CACHE_NAME = "grid-v4-6-inventory-shell-1";
+const ASSET_VERSION = "4.6.0";
 const APP_SHELL = [
     "./",
     "./index.html",

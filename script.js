@@ -1052,28 +1052,41 @@ function parseDueParts(dueValue) {
     return { due: originalValue || cleanedDue, month: "N/A", year: "N/A" };
 }
 
-function updateRawMasterFields(lookupCode, newLocation, newDue, newStatus) {
-    const rowIndex = rawMasterRows.findIndex((row, index) => {
-        return index > 0 && ((row[0] || "").toUpperCase() === lookupCode);
-    });
+function getRawMasterFieldIndices() {
+    const header = Array.isArray(rawMasterRows?.[0]) ? rawMasterRows[0] : [];
+    const normalized = header.map(value => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, ""));
+    const lookup = (names, fallback) => {
+        const found = normalized.findIndex(value => names.includes(value));
+        return found >= 0 ? found : fallback;
+    };
+    // Legacy GRID six-column master: CODE, NAME, LOCATION, DUE, STATUS, MSA.
+    return {
+        location: lookup(["LOCATION", "LOCATIONNAME"], 2),
+        due: lookup(["DUEDATE", "DUE"], 3),
+        status: lookup(["STATUS", "EQUIPMENTSTATUS"], 4),
+        nextVerificationDate: lookup(["EXPIREDDATE", "EXPIRYDATE", "NEXTVERIFICATIONDATE", "NEXTCALIBRATIONDATE"], -1)
+    };
+}
 
+function updateRawMasterFields(lookupCode, newLocation, newDue, newStatus, nextCalibrationDate = null) {
+    const rowIndex = rawMasterRows.findIndex((row, index) =>
+        index > 0 && String(row?.[0] || "").toUpperCase() === lookupCode
+    );
     if (rowIndex === -1) return;
 
-    while (rawMasterRows[rowIndex].length < 6) {
-        rawMasterRows[rowIndex].push("");
-    }
-
-    if (newLocation !== null && newLocation !== undefined) {
-        rawMasterRows[rowIndex][2] = newLocation;
-    }
-
-    if (newDue !== null && newDue !== undefined) {
-        rawMasterRows[rowIndex][3] = newDue;
-    }
-
-    if (newStatus !== null && newStatus !== undefined) {
-        rawMasterRows[rowIndex][4] = newStatus;
-    }
+    const indexes = getRawMasterFieldIndices();
+    const row = rawMasterRows[rowIndex];
+    const updates = [
+        [indexes.location, newLocation],
+        [indexes.due, newDue],
+        [indexes.status, newStatus],
+        [indexes.nextVerificationDate, nextCalibrationDate]
+    ];
+    updates.forEach(([index, value]) => {
+        if (index < 0 || value === null || value === undefined) return;
+        while (row.length <= index) row.push("");
+        row[index] = value;
+    });
 }
 
 function toggleMasterFieldEdit(field) {
@@ -1164,104 +1177,68 @@ function toggleMasterFieldEdit(field) {
     }
 }
 
-async function overwriteMasterFieldsIfChanged(newLocation, newDueValue, newStatusValue) {
-    const result = {
-        locationUpdated: false,
-        dueUpdated: false,
-        statusUpdated: false
-    };
-
+function overwriteMasterFieldsIfChanged(newLocation, newDueValue, newStatusValue) {
+    const result = { locationUpdated: false, dueUpdated: false, statusUpdated: false,
+        changes: {}, fields: [], newMaster: null, code: "" };
     if (!currentItem || currentItem.isUnregistered) return result;
-
-    const lookupCode = (currentItem.barcode || "").toUpperCase();
-    const currentMaster = masterDB[lookupCode];
-
-    if (!currentMaster) return result;
-
-    const cleanedLocation = (newLocation || "").trim();
-    const cleanedDue = (newDueValue || "").trim();
-    const cleanedStatus = normalizeEquipmentStatus(newStatusValue);
-
-    if (!cleanedLocation) {
-        alert("Location cannot be blank.");
+    const code = String(currentItem.barcode || "").trim().toUpperCase();
+    const previous = masterDB[code];
+    if (!previous || /[.#$/\[\]]/.test(code)) return null;
+    const locationValue = String(newLocation || "").trim();
+    const dueValue = String(newDueValue || "").trim();
+    const statusValue = normalizeEquipmentStatus(newStatusValue);
+    if (!locationValue || !dueValue || !statusValue) {
+        alert("Location, due date, and equipment status cannot be blank.");
         return null;
     }
-
-    if (!cleanedDue) {
-        alert("Due date cannot be blank.");
-        return null;
-    }
-
-    if (!cleanedStatus) {
-        alert("Equipment status cannot be blank.");
-        return null;
-    }
-
-    const locationParts = parseLocationParts(cleanedLocation);
-    const dueParts = parseDueParts(cleanedDue);
-
-    if (!dueParts) {
-        alert("Due date cannot be blank.");
-        return null;
-    }
-
-    const locationChanged = locationParts.loc !== (currentMaster.loc || "");
-    const dueChanged = dueParts.due !== (currentMaster.due || "");
-    const statusChanged = cleanedStatus !== normalizeEquipmentStatus(currentMaster.status || "N/A");
-
-    if (!locationChanged && !dueChanged && !statusChanged) return result;
-
-    if (!isOnline) {
-        alert("Cannot overwrite the master database while offline. Please reconnect and save again.");
-        return null;
-    }
-
-    const updatedMaster = {
-        ...currentMaster
+    const locationParts = parseLocationParts(locationValue);
+    const dueParts = parseDueParts(dueValue);
+    if (!dueParts || !dueParts.due) { alert("Enter a valid due month."); return null; }
+    const updated = { ...previous };
+    const fields = [];
+    const changes = {};
+    const add = (field, from, to) => {
+        if (String(from || "") === String(to || "")) return;
+        changes[`master_list/masterDB/${code}/${field}`] = to;
+        fields.push({ field, before: String(from || ""), after: String(to || "") });
+        updated[field] = to;
     };
-
-    if (locationChanged) {
-        updatedMaster.loc = locationParts.loc;
-        updatedMaster.bldg = locationParts.bldg;
-        updatedMaster.prod = locationParts.prod;
+    if (locationParts.loc !== String(previous.loc || "")) {
+        add("loc", previous.loc, locationParts.loc);
+        add("bldg", previous.bldg, locationParts.bldg);
+        add("prod", previous.prod, locationParts.prod);
         result.locationUpdated = true;
     }
-
-    if (dueChanged) {
-        updatedMaster.due = dueParts.due;
-        updatedMaster.month = dueParts.month;
-        updatedMaster.year = dueParts.year;
+    if (dueParts.due !== String(previous.due || "")) {
+        add("due", previous.due, dueParts.due);
+        add("month", previous.month, dueParts.month);
+        add("year", previous.year, dueParts.year);
         result.dueUpdated = true;
     }
-
-    if (statusChanged) {
-        updatedMaster.status = cleanedStatus;
+    if (statusValue !== normalizeEquipmentStatus(previous.status || "N/A")) {
+        add("status", previous.status, statusValue);
         result.statusUpdated = true;
     }
-
-    masterDB[lookupCode] = updatedMaster;
-    updateRawMasterFields(
-        lookupCode,
-        locationChanged ? locationParts.loc : null,
-        dueChanged ? dueParts.due : null,
-        statusChanged ? cleanedStatus : null
-    );
-
-    await db.ref('master_list').set({
-        masterDB,
-        rawMasterRows
-    });
-
-    currentItem = {
-        ...currentItem,
-        ...updatedMaster
-    };
-
-    rebuildFilters();
-    updateDisplay();
-
+    if (!fields.length) return result;
+    if (!isOnline) {
+        alert("Reconnect to Firebase before changing the equipment master.");
+        return null;
+    }
+    const rowIndex = rawMasterRows.findIndex((row, index) =>
+        index > 0 && String(row?.[0] || "").trim().toUpperCase() === code);
+    if (rowIndex >= 0) {
+        const indices = getRawMasterFieldIndices();
+        if (result.locationUpdated) changes[`master_list/rawMasterRows/${rowIndex}/${indices.location}`] = locationParts.loc;
+        if (result.dueUpdated) changes[`master_list/rawMasterRows/${rowIndex}/${indices.due}`] = dueParts.due;
+        if (result.statusUpdated) changes[`master_list/rawMasterRows/${rowIndex}/${indices.status}`] = statusValue;
+    }
+    result.changes = changes;
+    result.fields = fields;
+    result.newMaster = updated;
+    result.code = code;
     return result;
 }
+
 async function handleScannedCode(barcode) {
     if (!barcode) return;
 

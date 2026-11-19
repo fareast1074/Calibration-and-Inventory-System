@@ -6,10 +6,10 @@
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
 <meta content="#5d4037" name="theme-color"/>
 <meta content="Scanner-based inventory audit system with Firebase synchronization, missing-equipment notification, reporting, and SQLite backup/sync." name="description"/>
-<title>GRID V4.3 | Inventory System</title>
-<link href="manifest.json?v=4.3.0" rel="manifest"/>
-<link href="icon.svg?v=4.3.0" rel="icon" type="image/svg+xml"/>
-<link href="style.css?v=4.3.0" rel="stylesheet"/>
+<title>GRID V4.6 | Firebase Sync & Remark Log</title>
+<link href="manifest.json?v=4.6.0" rel="manifest"/>
+<link href="icon.svg?v=4.6.0" rel="icon" type="image/svg+xml"/>
+<link href="style.css?v=4.6.0" rel="stylesheet"/>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -25,7 +25,7 @@
 <div id="loginOverlay">
 <div class="login-card">
 <div class="scanner-line"></div>
-<div class="login-kicker">GRID V4.3 | Dev by F4REAST</div>
+<div class="login-kicker">GRID V4.6 | Dev by F4REAST</div>
 <div class="glitch-title">INVENTORY SYSTEM</div>
 <label class="sr-only" for="username">Name</label>
 <input autocomplete="username" id="username" placeholder="Name" type="text"/>
@@ -148,6 +148,10 @@
 <button class="stat-card stat-unregistered" onclick="setQuickView('unregistered')">
 <span class="stat-val" id="totalUnregistered">0</span>
 <span class="stat-lbl">Unregistered</span>
+</button>
+<button class="stat-card stat-extra" onclick="v44OpenExtraList()" title="Registered equipment scanned outside the current or following due month">
+<span class="stat-val" id="totalOutOfPeriod">0</span>
+<span class="stat-lbl">Other-month scans</span>
 </button>
 </section>
 <section class="load-zone">
@@ -308,6 +312,7 @@
 <button class="quick-filter" data-view="passed" onclick="setQuickView('passed')">Passed</button>
 <button class="quick-filter" data-view="mine" onclick="setQuickView('mine')">My scans</button>
 <button class="quick-filter" data-view="unregistered" onclick="setQuickView('unregistered')">Unregistered</button>
+<button class="quick-filter" data-view="outside" onclick="setQuickView('outside')">Other-month scans</button>
 <button class="quick-filter" data-view="pending" onclick="setQuickView('pending')">Pending</button>
 </nav>
 <section id="auditLogsSection">
@@ -319,7 +324,7 @@
 <table>
 <thead>
 <tr>
-<th>Time</th><th>Code</th><th>Name</th><th>PIC</th><th>Physical Loc.</th><th>Sticker Loc.</th><th>Due</th><th>Status</th><th>MSA</th><th>Remark</th><th>Action</th>
+<th>Time</th><th>Code</th><th>Name</th><th>PIC</th><th>Physical Loc.</th><th>Sticker Loc.</th><th>Due</th><th>Status</th><th>Scan group</th><th>MSA</th><th>Remark</th><th>Action</th>
 </tr>
 </thead>
 <tbody id="inventoryBody"></tbody>
@@ -341,6 +346,28 @@
 <tbody id="pendingBody"></tbody>
 </table>
 <div class="empty-state" hidden="" id="pendingEmptyState">No pending items match the current filters.</div>
+</div>
+</section>
+<section aria-labelledby="outOfPeriodTitle" class="out-of-period-panel" id="outOfPeriodSection">
+<div class="out-of-period-heading">
+<div>
+<span class="eyebrow">ADDITIONAL INVENTORY</span>
+<h2 id="outOfPeriodTitle">Out-of-Period Scans</h2>
+<p>Equipment scanned outside its current-month or next-month due schedule. Each record retains the two-month schedule applicable when it was scanned. Missing or unreadable due dates are shown for review.</p>
+<p class="out-of-period-scope">Current scanning window: <strong id="scanWindowLabel">-</strong>. Building, production, status and search filters apply; due-month/year filters do not hide exceptions.</p>
+</div>
+<div class="out-of-period-tools">
+<button class="btn-csv" onclick="v44ExportExtraCsv()" type="button">Export CSV</button>
+<button class="btn-excel" onclick="v44ExportExtraExcel()" type="button">Export Excel</button>
+</div>
+</div>
+<div class="section-header"><span>Additional scan records</span><small id="outOfPeriodResultCount">0 equipment</small></div>
+<div class="table-container extra-table-container">
+<table>
+<thead><tr><th>Scan time</th><th>Equipment code</th><th>Equipment name</th><th>Due at scan</th><th>Scan window</th><th>Group</th><th>Audit result</th><th>Auditor</th><th>Action</th></tr></thead>
+<tbody id="outOfPeriodBody"></tbody>
+</table>
+<div class="empty-state" id="outOfPeriodEmptyState">No out-of-period scans recorded.</div>
 </div>
 </section>
 </main>
@@ -427,12 +454,52 @@
 </div>
 </div>
 </div>
-<div class="modal-action-bar">
-<button class="btn-missing-equipment" id="btnMissingEquipment" onclick="submitMissingEquipment()" title="Save this item as missing and notify a selected production-group recipient" type="button">
-                    Mark Missing &amp; Notify
-                </button>
+<div class="modal-action-bar verification-action-bar">
+<div class="equipment-action-row" aria-label="Equipment condition and calibration actions">
+<span class="equipment-action-label">Equipment actions</span>
+<button class="btn-equipment-broken" id="btnMarkBroken" onclick="v45OpenEquipmentAction('BROKEN')" type="button" title="Record BROKEN condition with a mandatory operator remark">Remark Broken</button>
+<button class="btn-equipment-done" id="btnMarkDoneCal" onclick="v45OpenEquipmentAction('DONE_CAL')" type="button" title="Record completed calibration and enter the next calibration date">Done Cal</button>
+</div>
+<div class="verification-final-actions">
+<button class="btn-missing-equipment" id="btnMissingEquipment" onclick="submitMissingEquipment()" title="Save this item as missing and notify a selected production-group recipient" type="button">Mark Missing &amp; Notify</button>
 <button class="btn-save" disabled="" id="btnSubmitQC" onclick="submitQC()">Complete verification</button>
 <button class="btn-cancel" onclick="closeModal()">Close</button>
+</div>
+</div>
+</div>
+</div>
+<div aria-labelledby="equipmentActionModalTitle" aria-modal="true" class="app-modal equipment-action-modal" hidden="" id="equipmentActionModal" role="dialog">
+<div class="equipment-action-card">
+<div class="modal-header">
+<div>
+<span class="eyebrow">EQUIPMENT STATUS UPDATE</span>
+<h2 id="equipmentActionModalTitle">Equipment action</h2>
+</div>
+<button aria-label="Close equipment action" class="modal-close-x" onclick="v45CloseEquipmentAction()" type="button">×</button>
+</div>
+<div class="equipment-action-body">
+<div class="equipment-action-summary">
+<span>Equipment</span><strong id="equipmentActionCode">-</strong>
+<span>Current status</span><strong id="equipmentActionPreviousStatus">-</strong>
+<span>Current due</span><strong id="equipmentActionPreviousDue">-</strong>
+</div>
+<p class="equipment-action-explanation" id="equipmentActionExplanation"></p>
+<div class="equipment-next-date" id="equipmentActionNextDateBlock" hidden="">
+<label for="equipmentActionNextDate">Next calibration date <span aria-hidden="true">*</span></label>
+<input id="equipmentActionNextDate" type="date" required="" aria-describedby="equipmentActionDateHelp equipmentActionDateError" oninput="v45ValidateActionDateUI()"/>
+<small id="equipmentActionDateHelp">Required: select a valid future date. The equipment master due month will be updated automatically.</small>
+<small class="equipment-action-error" id="equipmentActionDateError" role="alert" hidden=""></small>
+</div>
+<div class="equipment-action-remark-block">
+<label for="equipmentActionRemark">Operator remark <span id="equipmentActionRemarkRequired">*</span></label>
+<textarea id="equipmentActionRemark" rows="3" maxlength="800" placeholder="Describe the defect, abnormal condition or reason for this equipment action…" oninput="v45ValidateActionDateUI()"></textarea>
+<small>Broken requires a meaningful remark. The remark and status change will be saved to Firebase audit and equipment change log.</small>
+</div>
+<div class="equipment-action-review" id="equipmentActionReview" aria-live="polite"></div>
+</div>
+<div class="modal-action-bar equipment-action-dialog-footer">
+<button class="btn-save" disabled="" id="btnSaveEquipmentAction" onclick="v45SaveEquipmentAction()" type="button">Save equipment action</button>
+<button class="btn-cancel" onclick="v45CloseEquipmentAction()" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -562,10 +629,10 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 </script>
-<script src="script.js?v=4.3.0"></script>
-<script src="email-directory.js?v=4.3.0"></script>
-<script src="enhancements.js?v=4.3.0"></script>
+<script src="script.js?v=4.6.0"></script>
+<script src="email-directory.js?v=4.6.0"></script>
+<script src="enhancements.js?v=4.6.0"></script>
 
-<script src="sql-backup.js?v=4.3.0"></script>
+<script src="sql-backup.js?v=4.6.0"></script>
 </body>
 </html>

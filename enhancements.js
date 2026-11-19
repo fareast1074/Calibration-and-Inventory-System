@@ -1,5 +1,5 @@
 /*
- * GRID Inventory System - V4.3 inventory experience layer
+ * GRID Inventory System - V4.5 inventory experience layer
  *
  * This file intentionally keeps the existing Firebase Realtime Database paths
  * and record shape used by script.js. It upgrades the scanning workflow,
@@ -23,6 +23,8 @@ let v2RemarkSuggestion = "";
 let v2PendingMasterImport = null;
 let v2SyncInProgress = false;
 let v2IsSubmitting = false;
+let v45EquipmentAction = null;
+let v45ActionSaving = false;
 let v2MissingMode = false;
 let v37MissingSelectionSnapshot = null;
 let v37MissingEmailSending = false;
@@ -64,6 +66,215 @@ function v2Slug(value) {
         .replace(/[^a-z0-9]+/gi, "-")
         .replace(/^-+|-+$/g, "")
         .toLowerCase() || "all";
+}
+
+/* -------------------------------------------------------------------------- */
+/* V4.4 — out-of-period equipment scans                                        */
+/* Scan scope is recorded with the audit so historical items do not change     */
+/* category when the calendar month rolls over or the master data is updated.  */
+/* -------------------------------------------------------------------------- */
+
+const V44_EXTRA_SCOPES = new Set(["OUT_OF_PERIOD", "DUE_UNKNOWN"]);
+
+function v44MonthWindow(referenceDate = new Date()) {
+    const reference = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+        ? referenceDate : new Date();
+    const current = new Date(reference.getFullYear(), reference.getMonth(), 1);
+    const next = new Date(reference.getFullYear(), reference.getMonth() + 1, 1);
+    const key = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const label = date => `${MONTH_ORDER[date.getMonth()]}-${String(date.getFullYear()).slice(-2)}`;
+    return {
+        currentKey: key(current),
+        nextKey: key(next),
+        currentLabel: label(current),
+        nextLabel: label(next),
+        label: `${label(current)} / ${label(next)}`
+    };
+}
+
+function v44AuditReferenceDate(record) {
+    const capturedAt = String(record?.scanDateISO || "").trim();
+    if (capturedAt) {
+        const parsed = new Date(capturedAt);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const id = Number(record?.id);
+    if (Number.isFinite(id) && id >= 946684800000 && id < 7258118400000) {
+        return new Date(id);
+    }
+
+    // Legacy records store time as DD/MM/YYYY HH:mm (en-GB).
+    const legacyTime = String(record?.time || "");
+    const match = legacyTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (match) {
+        const date = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+        if (!Number.isNaN(date.getTime()) &&
+            date.getDate() === Number(match[1]) &&
+            date.getMonth() === Number(match[2]) - 1) return date;
+    }
+
+    return new Date();
+}
+
+function v44ClassifyDue(dueValue, referenceDate = new Date(), isUnregistered = false) {
+    const window = v44MonthWindow(referenceDate);
+    if (isUnregistered) {
+        return { scope: "UNREGISTERED", due: "N/A", window: window.label };
+    }
+
+    const parsed = v2NormalizeImportDue(dueValue);
+    if (!parsed.valid) {
+        return { scope: "DUE_UNKNOWN", due: String(dueValue || "N/A"), window: window.label };
+    }
+
+    const dueKey = `${parsed.year}-${String(MONTH_ORDER.indexOf(parsed.month) + 1).padStart(2, "0")}`;
+    const scope = dueKey === window.currentKey ? "CURRENT_MONTH"
+        : dueKey === window.nextKey ? "NEXT_MONTH"
+        : "OUT_OF_PERIOD";
+
+    return { scope, due: parsed.due, window: window.label };
+}
+
+function v44ClassifyAudit(record) {
+    const savedScope = String(record?.scanScope || "").trim().toUpperCase();
+    if (["CURRENT_MONTH", "NEXT_MONTH", "OUT_OF_PERIOD", "DUE_UNKNOWN", "UNREGISTERED"].includes(savedScope)) {
+        return {
+            scope: savedScope,
+            due: String(record.scanDue || record.updatedDue || "N/A"),
+            window: String(record.scanWindow || v44MonthWindow(v44AuditReferenceDate(record)).label)
+        };
+    }
+
+    const code = String(record?.barcode || "").trim().toUpperCase();
+    const item = masterDB[code];
+    const wasUnregistered = record?.isUnregistered === true || (!item && !record?.updatedDue);
+    const due = record?.scanDue || record?.updatedDue || item?.due ||
+        (item?.month && item?.year ? `${item.month}-${item.year}` : "");
+    return v44ClassifyDue(due, v44AuditReferenceDate(record), wasUnregistered);
+}
+
+function v44IsExtraScan(record) {
+    return V44_EXTRA_SCOPES.has(v44ClassifyAudit(record).scope);
+}
+
+function v44ScopeText(scope) {
+    return {
+        CURRENT_MONTH: "Current month",
+        NEXT_MONTH: "Next month",
+        OUT_OF_PERIOD: "Outside schedule",
+        DUE_UNKNOWN: "Due date unavailable",
+        UNREGISTERED: "Unregistered"
+    }[scope] || "Not classified";
+}
+
+function v44ScopePill(scope) {
+    const style = V44_EXTRA_SCOPES.has(scope) ? "scope-extra" :
+        scope === "UNREGISTERED" ? "scope-unregistered" : "scope-scheduled";
+    return `<span class="scan-scope-pill ${style}">${escapeHtml(v44ScopeText(scope))}</span>`;
+}
+
+function v44VisibleExtraScans(filters = getSelectedFilterState(), search = "") {
+    // Out-of-period is defined by the date at scan time. A currently selected
+    // Due Month/Year must not accidentally hide historic exceptions.
+    const nonDateFilters = { ...filters, months: [], years: [], month: "", year: "" };
+    return Array.from(v2BuildLatestAuditByCode().values())
+        .filter(record => {
+            if (!v44IsExtraScan(record)) return false;
+            const code = String(record.barcode || "").trim().toUpperCase();
+            const item = masterDB[code];
+            if (item && !itemMatchesFilters(item, nonDateFilters)) return false;
+            if (!item && v2FilterHasStructuredSelection(nonDateFilters)) return false;
+            if (!search) return true;
+            const category = v44ClassifyAudit(record);
+            return v2MatchesSearch(record, item, search) ||
+                [category.due, category.window, v44ScopeText(category.scope)]
+                    .some(value => String(value || "").toUpperCase().includes(search));
+        })
+        .sort((a, b) => v2AuditRecency(b, 0) - v2AuditRecency(a, 0));
+}
+
+function v44ExtraScanRows(records) {
+    const rows = [[
+        "SCAN TIME", "EQUIPMENT CODE", "EQUIPMENT NAME", "LOCATION", "DUE AT SCAN",
+        "SCHEDULE AT SCAN", "SCAN GROUP", "AUDIT RESULT", "AUDITOR", "REMARK", "NEXT CALIBRATION DATE"
+    ]];
+    records.forEach(record => {
+        const code = String(record.barcode || "").toUpperCase();
+        const item = masterDB[code];
+        const classification = v44ClassifyAudit(record);
+        rows.push([
+            record.time || "", record.barcode || "", record.name || item?.name || "",
+            record.updatedLocation || item?.loc || "", classification.due,
+            classification.window, v44ScopeText(classification.scope),
+            v2AuditCategory(record), record.pic || "", record.remark || "",
+            record.nextCalibrationDate || ""
+        ]);
+    });
+    return rows;
+}
+
+function v44ExportExtraCsv() {
+    const records = v44VisibleExtraScans(getSelectedFilterState(),
+        (v2El("globalSearch")?.value || "").trim().toUpperCase());
+    if (!records.length) {
+        showToast("No out-of-period scans match the current filters.", "warning");
+        return;
+    }
+    v2DownloadCsv(v44ExtraScanRows(records), `Out_of_Period_Scans_${v2TimestampForFilename()}.csv`);
+    showToast(`${records.length} out-of-period scans exported.`, "success");
+}
+
+function v44ExportExtraExcel() {
+    const records = v44VisibleExtraScans(getSelectedFilterState(),
+        (v2El("globalSearch")?.value || "").trim().toUpperCase());
+    if (!records.length) {
+        showToast("No out-of-period scans match the current filters.", "warning");
+        return;
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook,
+        v2Worksheet(v44ExtraScanRows(records), [21, 21, 31, 24, 17, 23, 25, 16, 20, 40, 23]),
+        "Out of Period");
+    XLSX.writeFile(workbook, `Out_of_Period_Scans_${v2TimestampForFilename()}.xlsx`);
+    showToast(`${records.length} out-of-period scans exported.`, "success");
+}
+
+function v44OpenExtraList() {
+    setQuickView("outside");
+}
+
+function v44RenderExtraScanList(records) {
+    const body = v2El("outOfPeriodBody");
+    const empty = v2El("outOfPeriodEmptyState");
+    v2SetText("outOfPeriodResultCount", `${records.length} equipment`);
+    if (empty) empty.hidden = records.length > 0;
+    if (!body) return;
+
+    body.innerHTML = records.map(record => {
+        const code = String(record.barcode || "").toUpperCase();
+        const item = masterDB[code];
+        const category = v44ClassifyAudit(record);
+        const auditResult = v2AuditCategory(record);
+        const rowClass = auditResult === "MISSING" ? "row-missing" :
+            v2IsAbnormalAudit(record) ? "row-fail" :
+            auditResult === "DONE CAL" ? "row-done-cal" : "";
+        const key = v2SafeActionValue(record.cloudId || record.id || record.barcode || "");
+        return `<tr class="${rowClass}">
+            <td data-label="Scan time">${escapeHtml(record.time || "-")}</td>
+            <td data-label="Code"><strong>${escapeHtml(record.barcode || "-")}</strong></td>
+            <td data-label="Equipment">${escapeHtml(record.name || item?.name || "-")}</td>
+            <td data-label="Due at scan">${escapeHtml(category.due)}</td>
+            <td data-label="Scanned against">${escapeHtml(category.window)}</td>
+            <td data-label="Scan group">${v44ScopePill(category.scope)}</td>
+            <td data-label="Audit result">${v2Pill(auditResult, ["PASS", "DONE CAL"])}</td>
+            <td data-label="Auditor">${escapeHtml(record.pic || "-")}</td>
+            <td data-label="Action"><div class="row-action-group">
+                <button class="btn-detail-row" onclick="openAuditDetail('${key}')">Detail</button>
+                ${canDeleteAuditRecords() ? `<button class="btn-delete-row" onclick="deleteRow('${key}')">Delete</button>` : ""}
+            </div></td>
+        </tr>`;
+    }).join("");
 }
 
 const V2_MASTER_FIELD_ALIASES = {
@@ -998,7 +1209,7 @@ function itemMatchesFilters(item, filters) {
 }
 
 function setQuickView(view) {
-    const allowed = new Set(["all", "abnormal", "missing", "passed", "mine", "unregistered", "pending"]);
+    const allowed = new Set(["all", "abnormal", "missing", "passed", "mine", "unregistered", "pending", "outside"]);
     v2QuickView = allowed.has(view) ? view : "all";
     v2AuditLimit = 200;
 
@@ -1008,7 +1219,8 @@ function setQuickView(view) {
 
     updateDisplay();
 
-    const targetId = v2QuickView === "pending" ? "pendingSection" : "auditLogsSection";
+    const targetId = v2QuickView === "pending" ? "pendingSection"
+        : v2QuickView === "outside" ? "outOfPeriodSection" : "auditLogsSection";
     v2El(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1070,6 +1282,8 @@ function v2MatchesSearch(auditRecord, masterItem, search) {
         auditRecord?.updatedDue,
         auditRecord?.updatedStatus,
         auditRecord?.auditStatus,
+        auditRecord?.equipmentAction,
+        auditRecord?.nextCalibrationDate,
         v2IsMissingAudit(auditRecord) ? "MISSING EQUIPMENT" : "",
         exportFields.name,
         exportFields.serialNo,
@@ -1077,6 +1291,7 @@ function v2MatchesSearch(auditRecord, masterItem, search) {
         exportFields.building,
         exportFields.production,
         masterItem?.due,
+        masterItem?.nextCalibrationDate,
         masterItem?.status,
         masterItem?.msa
     ];
@@ -1133,6 +1348,9 @@ function v2AuditCategory(record) {
     if (v2IsMissingAudit(record)) return "MISSING";
 
     const storedStatus = String(record?.auditStatus || "").trim().toUpperCase();
+    const action = String(record?.equipmentAction || "").trim().toUpperCase();
+    if (storedStatus === "BROKEN" || action === "BROKEN") return "BROKEN";
+    if (storedStatus === "DONE_CAL" || action === "DONE_CAL") return "DONE CAL";
     if (record?.isFail || ["ABNORMAL", "FAIL", "FAILED"].includes(storedStatus)) {
         return "ABNORMAL";
     }
@@ -1141,7 +1359,7 @@ function v2AuditCategory(record) {
 }
 
 function v2IsAbnormalAudit(record) {
-    return v2AuditCategory(record) === "ABNORMAL";
+    return ["ABNORMAL", "BROKEN"].includes(v2AuditCategory(record));
 }
 
 function v2IsPassedAudit(record) {
@@ -1215,6 +1433,12 @@ function updateDisplay() {
     v2SetText("totalMissing", missingItems.length);
     v2SetText("totalNotScanned", Math.max(filteredTargetList.length - scannedInTarget, 0));
     v2SetText("totalUnregistered", unregisteredItems.length);
+    // The exception list has its own count. Do not classify a scan outside the
+    // month window as abnormal unless its actual verification result is abnormal.
+    const outsideRecords = v44VisibleExtraScans(filters, search);
+    v2SetText("totalOutOfPeriod", outsideRecords.length);
+    v44RenderExtraScanList(outsideRecords);
+    v2SetText("scanWindowLabel", v44MonthWindow().label);
     v2UpdatePendingBadge();
 
     let visibleAuditResults = filteredAuditResults;
@@ -1231,7 +1455,7 @@ function updateDisplay() {
         visibleAuditResults = visibleAuditResults.filter(record => {
             return !masterDB[String(record.barcode || "").toUpperCase()];
         });
-    } else if (v2QuickView === "pending") {
+    } else if (v2QuickView === "pending" || v2QuickView === "outside") {
         visibleAuditResults = [];
     }
 
@@ -1257,15 +1481,19 @@ function updateDisplay() {
                 ? "row-missing"
                 : !masterItem
                     ? "row-unregistered"
-                    : auditCategory === "ABNORMAL"
+                    : v2IsAbnormalAudit(record)
                         ? "row-fail"
-                        : "";
+                        : auditCategory === "DONE CAL" ? "row-done-cal" : "";
             const key = v2SafeActionValue(record.cloudId || record.id || record.barcode || "");
             const msaPassValues = v2AuditPassesMsa(record, masterItem) ? [record.msaRes] : [];
             const msaNeutralValues = record.msaRes === "N/A" ? ["N/A"] : [];
             const statusDisplay = auditCategory === "MISSING"
                 ? `${v2Pill("MISSING")}<small class="master-status-note">Master: ${escapeHtml(originalStatus)}</small>`
-                : escapeHtml(originalStatus);
+                : auditCategory === "BROKEN"
+                    ? `<span class="status-pill pill-broken">BROKEN</span>`
+                    : auditCategory === "DONE CAL"
+                        ? `<span class="status-pill pill-done-cal">DONE CAL</span><small class="master-status-note">${escapeHtml(record.nextCalibrationDate || "")}</small>`
+                        : escapeHtml(originalStatus);
 
             return `<tr class="${rowClass}">
                 <td data-label="Time">${escapeHtml(record.time || "-")}</td>
@@ -1276,6 +1504,7 @@ function updateDisplay() {
                 <td data-label="Sticker Location">${v2Pill(record.stickerLocRes || "N/A", ["CORRECT"], ["N/A"])}</td>
                 <td data-label="Due">${v2Pill(record.dueRes, ["VALID"], ["N/A"])}</td>
                 <td data-label="Status">${statusDisplay}</td>
+                <td data-label="Scan group">${v44ScopePill(v44ClassifyAudit(record).scope)}</td>
                 <td data-label="MSA">${v2Pill(record.msaRes, msaPassValues, msaNeutralValues)}</td>
                 <td data-label="Remark">${escapeHtml(record.remark || "-")}</td>
                 <td data-label="Action">
@@ -1412,11 +1641,16 @@ function updateFailureChart(failedItems) {
         "Missing MSA": 0,
         "Status updated": 0,
         "Unregistered": 0,
+        "Broken equipment": 0,
         "Other": 0
     };
 
     failedItems.forEach(record => {
         if (v2IsMissingAudit(record)) return;
+        if (v2AuditCategory(record) === "BROKEN") {
+            counts["Broken equipment"] += 1;
+            return;
+        }
 
         const masterItem = masterDB[String(record.barcode || "").toUpperCase()];
         let categorized = false;
@@ -1461,7 +1695,7 @@ function updateFailureChart(failedItems) {
 
     const labels = Object.keys(counts).filter(label => counts[label] > 0);
     const data = labels.map(label => counts[label]);
-    const colors = ["#d32f2f", "#c62828", "#f57c00", "#f9a825", "#7b1fa2", "#5d4037", "#1565c0", "#795548"];
+    const colors = ["#d32f2f", "#c62828", "#f57c00", "#f9a825", "#7b1fa2", "#5d4037", "#1565c0", "#795548", "#6a1b9a"];
     const canvas = v2El("failureChart");
     const legend = v2El("failureLegend");
 
@@ -1679,6 +1913,20 @@ function updateVerificationState() {
             : "Save this item as missing and prepare an email for a selected production-group recipient.";
     }
 
+    ["btnMarkBroken", "btnMarkDoneCal"].forEach(id => {
+        const button = v2El(id);
+        if (!button) return;
+        button.disabled = v2IsSubmitting || v45ActionSaving ||
+            !currentItem || Boolean(currentItem.isUnregistered) || !isOnline;
+        button.title = currentItem?.isUnregistered
+            ? "Only registered equipment can be updated."
+            : !isOnline
+                ? "Online connection required to update the equipment master."
+                : id === "btnMarkBroken"
+                    ? "Set equipment status to BROKEN and record the action."
+                    : "Set equipment status to COMPLETED and enter the next calibration date.";
+    });
+
     v2RemarkSuggestion = v2BuildRemarkSuggestion();
 
     const suggestionBox = v2El("remarkSuggestion");
@@ -1741,6 +1989,17 @@ function renderQCModal(auditRecord = null) {
 
     const auditCategory = auditRecord ? v2AuditCategory(auditRecord) : "";
     const recordIsMissing = auditCategory === "MISSING";
+    const scanClassification = auditRecord
+        ? v44ClassifyAudit(auditRecord)
+        : v44ClassifyDue(currentItem.due, new Date(), currentItem.isUnregistered);
+    const scopeNotice = V44_EXTRA_SCOPES.has(scanClassification.scope) ? `
+        <div class="scan-scope-notice" role="note">
+            <strong>ADDITIONAL SCAN — ${escapeHtml(v44ScopeText(scanClassification.scope))}</strong>
+            <span>Equipment due: ${escapeHtml(scanClassification.due)}. Current scan window:
+                ${escapeHtml(scanClassification.window)}. This audit will be listed under
+                <b>Out-of-Period Scans</b> after saving.</span>
+        </div>
+    ` : "";
     const missingNotificationMeta = recordIsMissing && auditRecord?.missingEmailRecipient ? `
         <div><span>Notification group</span><strong>${escapeHtml(auditRecord.missingEmailGroup || "-")}</strong></div>
         <div><span>Notification recipient</span><strong>${escapeHtml(auditRecord.missingEmailRecipient)}</strong></div>
@@ -1752,6 +2011,9 @@ function renderQCModal(auditRecord = null) {
             <div><span>Scanned by</span><strong>${escapeHtml(auditRecord.pic || "-")}</strong></div>
             <div><span>Audit result</span><strong>${auditCategory}</strong></div>
             <div><span>Recorded equipment status</span><strong>${escapeHtml(auditRecord.updatedStatus || currentItem.status || "N/A")}</strong></div>
+            ${auditRecord?.equipmentAction ? `<div><span>Equipment action</span><strong>${escapeHtml(v2AuditCategory(auditRecord))}</strong></div>` : ""}
+            ${auditRecord?.nextCalibrationDate ? `<div><span>Next calibration date</span><strong>${escapeHtml(auditRecord.nextCalibrationDate)}</strong></div>` : ""}
+            ${auditRecord?.previousDue ? `<div><span>Due before action</span><strong>${escapeHtml(auditRecord.previousDue)}</strong></div>` : ""}
             ${missingNotificationMeta}
         </div>
     ` : "";
@@ -1770,6 +2032,7 @@ function renderQCModal(auditRecord = null) {
                 <div><span>Building</span><strong>${safeBuilding}</strong></div>
                 <div><span>Calibrated by</span><strong>${safeCalibratedBy}</strong></div>
             </div>
+            ${scopeNotice}
             ${detailMeta}
             <div class="registered-data-grid">
                 <div>
@@ -1789,6 +2052,7 @@ function renderQCModal(auditRecord = null) {
                             placeholder="APR-27" onkeydown="if(event.key === 'Enter'){ toggleMasterFieldEdit('due'); }" ${editDisabled}>
                         <button type="button" id="btnEditDue" class="btn-inline-edit" onclick="toggleMasterFieldEdit('due')" ${editDisabled}>EDIT</button>
                     </div>
+                    ${currentItem.nextCalibrationDate ? `<small class="next-date-note">Full date: ${escapeHtml(currentItem.nextCalibrationDate)}</small>` : ""}
                 </div>
                 <div>
                     <span>Equipment status</span>
@@ -1803,6 +2067,8 @@ function renderQCModal(auditRecord = null) {
                             <option value="INACTIVE"></option>
                             <option value="UNDER REPAIR"></option>
                             <option value="OUT OF SERVICE"></option>
+                            <option value="BROKEN"></option>
+                            <option value="COMPLETED"></option>
                             <option value="MISSING"></option>
                             <option value="DISPOSED"></option>
                         </datalist>
@@ -2407,6 +2673,275 @@ async function confirmMissingEmailAndSave() {
     }
 }
 
+/* -------------------------------------------------------------------------- */
+/* V4.5 - BROKEN and DONE CAL shortcuts                                        */
+/* Writes master and an immutable action audit in one Firebase multi-path       */
+/* update. Status actions cannot be queued offline because that would leave     */
+/* Firebase master dates/statuses out of sync with scan history.               */
+/* -------------------------------------------------------------------------- */
+
+function v45CheckNextCalDate(input, referenceDate = new Date()) {
+    const value = String(input || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return { valid: false, error: "Next calibration date is required." };
+    }
+    const [year, month, day] = value.split("-").map(Number);
+    const selected = new Date(year, month - 1, day);
+    if (year < 2000 || year > 2099 || selected.getFullYear() !== year ||
+        selected.getMonth() !== month - 1 || selected.getDate() !== day) {
+        return { valid: false, error: "Select a valid calendar date." };
+    }
+    const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+    if (selected <= today) {
+        return { valid: false, error: "Next calibration date must be after today." };
+    }
+    return {
+        valid: true, iso: value, month: MONTH_ORDER[month - 1],
+        year: String(year), due: `${MONTH_ORDER[month - 1]}-${String(year).slice(-2)}`
+    };
+}
+
+function v45OpenEquipmentAction(action) {
+    if (!["BROKEN", "DONE_CAL"].includes(action) || !currentItem ||
+        v2IsSubmitting || v45ActionSaving) return;
+
+    if (currentItem.isUnregistered || !masterDB[String(currentItem.barcode || "").toUpperCase()]) {
+        showToast("Only registered equipment can be marked Broken or Done Cal.", "warning");
+        return;
+    }
+    if (!isOnline) {
+        showToast("Reconnect to Firebase before changing an equipment status or due date.", "warning");
+        return;
+    }
+
+    v45EquipmentAction = action;
+    const modal = v2El("equipmentActionModal");
+    const input = v2El("equipmentActionNextDate");
+    const isDone = action === "DONE_CAL";
+    const actionRemark = v2El("equipmentActionRemark");
+    if (actionRemark) { actionRemark.value = ""; actionRemark.required = !isDone; }
+    const requiredLabel = v2El("equipmentActionRemarkRequired");
+    if (requiredLabel) requiredLabel.textContent = isDone ? "(optional)" : "*";
+    v2SetText("equipmentActionModalTitle", isDone ? "Done Calibration" : "Mark Equipment Broken");
+    v2SetText("equipmentActionCode", currentItem.barcode || "-");
+    v2SetText("equipmentActionPreviousStatus", currentItem.status || "N/A");
+    v2SetText("equipmentActionPreviousDue", currentItem.due || "N/A");
+    v2SetText("equipmentActionExplanation", isDone
+        ? "Confirm calibration has been completed. Enter the NEXT calibration date to update the equipment master. The normal four verification checks are not required for this status action."
+        : "Confirm this unit is BROKEN. Its master status will be changed to BROKEN, and its existing calibration due date will not be changed. The normal four verification checks are not required.");
+    const dateBlock = v2El("equipmentActionNextDateBlock");
+    if (dateBlock) dateBlock.hidden = !isDone;
+    if (input) {
+        input.value = ""; // Never silently carry a previously selected date into another action.
+        input.required = isDone;
+        const today = new Date();
+        const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+        input.min = [tomorrow.getFullYear(), String(tomorrow.getMonth() + 1).padStart(2, "0"),
+            String(tomorrow.getDate()).padStart(2, "0")].join("-");
+        input.max = "2099-12-31";
+        input.removeAttribute("aria-invalid");
+    }
+    const error = v2El("equipmentActionDateError");
+    if (error) { error.hidden = true; error.textContent = ""; }
+    v45ValidateActionDateUI();
+    if (modal) {
+        modal.hidden = false;
+        modal.classList.add("is-open");
+        (isDone ? input : v2El("btnSaveEquipmentAction"))?.focus();
+    }
+}
+
+function v45CloseEquipmentAction(force = false) {
+    if (v45ActionSaving && !force) return;
+    const previous = v45EquipmentAction;
+    v45EquipmentAction = null;
+    const modal = v2El("equipmentActionModal");
+    if (modal) { modal.classList.remove("is-open"); modal.hidden = true; }
+    if (!force) v2El(previous === "DONE_CAL" ? "btnMarkDoneCal" : "btnMarkBroken")?.focus();
+}
+
+function v46ValidRemark(value) {
+    const text = String(value || "").trim();
+    return text.length >= 3 && !["-", "N/A", "NA", "NONE"].includes(text.toUpperCase());
+}
+
+function v45ValidateActionDateUI() {
+    const isDone = v45EquipmentAction === "DONE_CAL";
+    const input = v2El("equipmentActionNextDate");
+    const dateInfo = isDone ? v45CheckNextCalDate(input?.value || "") : null;
+    const error = v2El("equipmentActionDateError");
+    const attempted = Boolean(input?.value);
+    if (error) {
+        error.hidden = !isDone || !attempted || Boolean(dateInfo?.valid);
+        error.textContent = error.hidden ? "" : dateInfo.error;
+    }
+    if (input) {
+        if (isDone && attempted && !dateInfo.valid) input.setAttribute("aria-invalid", "true");
+        else input.removeAttribute("aria-invalid");
+    }
+    const button = v2El("btnSaveEquipmentAction");
+    if (button) {
+        button.textContent = v45ActionSaving ? "Saving..."
+            : isDone ? "Save Done Cal" : "Confirm Broken";
+        button.disabled = v45ActionSaving || !isOnline || !v45EquipmentAction ||
+            (isDone && !dateInfo?.valid) || (!isDone && !v46ValidRemark(v2El("equipmentActionRemark")?.value));
+    }
+    v2SetText("equipmentActionReview", isDone
+        ? dateInfo?.valid
+            ? `Status: COMPLETED. New master due: ${dateInfo.due}. Full next calibration date: ${dateInfo.iso}.`
+            : "The new due date will be saved only after you select a valid future date."
+        : "Status: BROKEN. Current due date stays unchanged.");
+    return !isDone || Boolean(dateInfo?.valid);
+}
+
+async function v45SaveEquipmentAction() {
+    if (!currentItem || !v45EquipmentAction || v45ActionSaving || v2IsSubmitting) return;
+    if (!isOnline) {
+        showToast("The master database cannot be updated while offline. Reconnect and retry.", "warning");
+        return;
+    }
+
+    const action = v45EquipmentAction;
+    const isDone = action === "DONE_CAL";
+    const operatorRemark = String(v2El("equipmentActionRemark")?.value || "").trim().slice(0, 800);
+    if (!isDone && !v46ValidRemark(operatorRemark)) {
+        showToast("A defect / broken-equipment remark (at least 3 characters) is required.", "warning");
+        v2El("equipmentActionRemark")?.focus();
+        return;
+    }
+    const dateInfo = isDone ? v45CheckNextCalDate(v2El("equipmentActionNextDate")?.value) : null;
+    if (isDone && !dateInfo.valid) {
+        const error = v2El("equipmentActionDateError");
+        if (error) { error.hidden = false; error.textContent = dateInfo.error; }
+        v2El("equipmentActionNextDate")?.focus();
+        showToast(dateInfo.error, "warning");
+        return;
+    }
+
+    const code = String(currentItem.barcode || "").trim().toUpperCase();
+    const previousMaster = masterDB[code];
+    if (!previousMaster || currentItem.isUnregistered || /[.#$\/\[\]]/.test(code)) {
+        showToast("Cannot update this equipment: missing master entry or invalid database key.", "error");
+        return;
+    }
+
+    const now = new Date();
+    const nextStatus = isDone ? "COMPLETED" : "BROKEN";
+    const oldDue = String(previousMaster.due || "N/A");
+    const newDue = isDone ? dateInfo.due : oldDue;
+    const scanClassification = v44ClassifyDue(oldDue, now, false);
+    const changedDue = newDue !== oldDue;
+    const remark = operatorRemark || String(v2El("qcRemark")?.value || "").trim();
+    const actionNote = isDone
+        ? `Calibration completed; next calibration ${dateInfo.iso}`
+        : "Equipment marked broken";
+    const dateTime = now.toLocaleDateString("en-GB") + " " + now.toLocaleTimeString([], {
+        hour: "2-digit", minute: "2-digit"
+    });
+    const newRef = db.ref("audit_history").push();
+    const record = {
+        id: now.getTime(), cloudId: newRef.key, time: dateTime, scanDateISO: now.toISOString(),
+        barcode: currentItem.barcode, name: currentItem.name || previousMaster.name || "N/A",
+        pic: loggedInUser, locRes: "N/A", stickerLocRes: "N/A", dueRes: "N/A", msaRes: "N/A",
+        scanScope: scanClassification.scope, scanWindow: scanClassification.window,
+        scanDue: scanClassification.due,
+        updatedLocation: previousMaster.loc || currentItem.loc || "N/A",
+        updatedDue: newDue, updatedStatus: nextStatus,
+        previousStatus: previousMaster.status || "N/A", previousDue: oldDue,
+        nextCalibrationDate: isDone ? dateInfo.iso : "",
+        equipmentAction: action, actionBy: loggedInUser, actionAtISO: now.toISOString(),
+        sourceAuditCloudId: currentAuditEditRecord?.cloudId || "",
+        operatorRemark: remark || actionNote,
+        remark: remark ? `${actionNote}; ${remark}` : actionNote,
+        masterLocationUpdated: false, masterDueUpdated: changedDue,
+        masterStatusUpdated: nextStatus !== normalizeEquipmentStatus(previousMaster.status),
+        isFail: !isDone, isMissing: false, isUnregistered: false,
+        auditStatus: action
+    };
+
+    const changes = {
+        [`master_list/masterDB/${code}/status`]: nextStatus,
+        [`audit_history/${newRef.key}`]: record
+    };
+    // One immutable, append-only master-change reason per affected field.
+    const changeRef = db.ref("equipment_change_log").push();
+    changes[`equipment_change_log/${changeRef.key}`] = {
+        equipmentCode: code, sourceAuditCloudId: newRef.key, action,
+        changedBy: loggedInUser, changedAtISO: now.toISOString(),
+        remark: record.operatorRemark,
+        fields: [{field: "status", oldValue: String(previousMaster.status || ""), newValue: nextStatus},
+            ...(isDone ? [{field: "due", oldValue: oldDue, newValue: newDue}] : [])]
+    };
+    if (isDone) {
+        changes[`master_list/masterDB/${code}/due`] = dateInfo.due;
+        changes[`master_list/masterDB/${code}/month`] = dateInfo.month;
+        changes[`master_list/masterDB/${code}/year`] = dateInfo.year;
+        changes[`master_list/masterDB/${code}/nextCalibrationDate`] = dateInfo.iso;
+        if (Object.hasOwn(previousMaster, "nextVerificationDate")) {
+            changes[`master_list/masterDB/${code}/nextVerificationDate`] = dateInfo.iso;
+        }
+        if (Object.hasOwn(previousMaster, "expiredDate")) {
+            changes[`master_list/masterDB/${code}/expiredDate`] = dateInfo.iso;
+        }
+    }
+
+    // Imported modern masters have 29 columns. Older masters have 6 columns.
+    // Write by header name instead of the incorrect legacy 2/3/4 fixed indexes.
+    const rowIndex = rawMasterRows.findIndex((row, index) =>
+        index > 0 && String(row?.[0] || "").trim().toUpperCase() === code);
+    if (rowIndex >= 0) {
+        const indexes = getRawMasterFieldIndices();
+        changes[`master_list/rawMasterRows/${rowIndex}/${indexes.status}`] = nextStatus;
+        if (isDone) {
+            changes[`master_list/rawMasterRows/${rowIndex}/${indexes.due}`] = dateInfo.due;
+            if (indexes.nextVerificationDate >= 0) {
+                changes[`master_list/rawMasterRows/${rowIndex}/${indexes.nextVerificationDate}`] = dateInfo.iso;
+            }
+        }
+    }
+
+    v45ActionSaving = true;
+    v2IsSubmitting = true;
+    v45ValidateActionDateUI();
+    updateVerificationState();
+    try {
+        // One atomic Realtime Database update: audit and master must agree.
+        await db.ref().update(changes);
+        // The Firebase listeners also refresh these values; update local state
+        // now so the detail/filters are correct without waiting for a callback.
+        masterDB[code] = {
+            ...previousMaster, status: nextStatus,
+            ...(isDone ? {
+                due: dateInfo.due, month: dateInfo.month, year: dateInfo.year,
+                nextCalibrationDate: dateInfo.iso,
+                ...(Object.hasOwn(previousMaster, "nextVerificationDate") ? { nextVerificationDate: dateInfo.iso } : {}),
+                ...(Object.hasOwn(previousMaster, "expiredDate") ? { expiredDate: dateInfo.iso } : {})
+            } : {})
+        };
+        updateRawMasterFields(code, null, isDone ? dateInfo.due : null,
+            nextStatus, isDone ? dateInfo.iso : null);
+        if (!scanHistory.some(entry => entry.cloudId === newRef.key)) scanHistory.unshift(record);
+        v2SetLastScan(currentItem.barcode, isDone ? "Saved - done cal" : "Saved - broken");
+        v2Feedback(isDone ? "pass" : "fail");
+        showToast(isDone
+            ? `${code}: Done Cal saved. Next calibration ${dateInfo.iso} (${dateInfo.due}).`
+            : `${code}: equipment marked BROKEN. Due date unchanged.`,
+            isDone ? "success" : "warning", 5500);
+        v45ActionSaving = false;
+        v45CloseEquipmentAction(true);
+        closeModal();
+    } catch (error) {
+        console.error("Unable to update equipment action", error);
+        showToast(`Unable to save equipment action: ${error.message || "Unknown error"}`, "error", 5500);
+        v2Feedback("fail");
+    } finally {
+        v45ActionSaving = false;
+        v2IsSubmitting = false;
+        v45ValidateActionDateUI();
+        updateVerificationState();
+    }
+}
+
 async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}) {
     if (!currentItem || v2IsSubmitting) return;
 
@@ -2426,7 +2961,8 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
     const existingRecord = currentAuditEditRecord || {};
 
     try {
-        const masterUpdateResult = await overwriteMasterFieldsIfChanged(editedLocation, editedDue, editedStatus);
+        // Plan the field edits first. Never write master before scan evidence.
+        const masterUpdateResult = overwriteMasterFieldsIfChanged(editedLocation, editedDue, editedStatus);
 
         if (masterUpdateResult === null) {
             v2IsSubmitting = false;
@@ -2434,6 +2970,14 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
             return;
         }
 
+        const fieldsChanged = masterUpdateResult.fields?.length > 0;
+        if (fieldsChanged && !v46ValidRemark(remarkValue)) {
+            showToast("Enter a meaningful remark (at least 3 characters) before changing equipment location, status, or due date.", "warning", 5500);
+            remarkInput?.focus();
+            v2IsSubmitting = false;
+            updateVerificationState();
+            return;
+        }
         const masterLocationUpdated = Boolean(masterUpdateResult.locationUpdated);
         const masterDueUpdated = Boolean(masterUpdateResult.dueUpdated);
         const masterStatusUpdated = Boolean(masterUpdateResult.statusUpdated);
@@ -2472,7 +3016,18 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
             minute: "2-digit"
         });
 
+        // Keep the original scan window on edits; a corrected due date may
+        // legitimately move the scan between the scheduled and exception lists.
+        const scanDate = isEditMode ? v44AuditReferenceDate(existingRecord) : now;
+        const scanClassification = v44ClassifyDue(
+            editedDue, scanDate, currentItem.isUnregistered
+        );
         const auditData = {
+            scanScope: scanClassification.scope,
+            scanWindow: scanClassification.window,
+            scanDue: scanClassification.due,
+            scanDateISO: isEditMode && existingRecord.scanDateISO
+                ? existingRecord.scanDateISO : scanDate.toISOString(),
             id: isEditMode ? (existingRecord.id || Date.now()) : Date.now(),
             time: isEditMode ? (existingRecord.time || dateTimeString) : dateTimeString,
             barcode: isEditMode ? (existingRecord.barcode || currentItem.barcode) : currentItem.barcode,
@@ -2482,9 +3037,10 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
             stickerLocRes: isMissing ? "N/A" : selectedStickerLoc,
             dueRes: isMissing ? "N/A" : selectedDue,
             msaRes: isMissing ? "N/A" : selectedMsa,
-            updatedLocation: currentItem.loc,
-            updatedDue: currentItem.due,
-            updatedStatus: currentItem.status,
+            updatedLocation: masterUpdateResult.newMaster?.loc || currentItem.loc,
+            updatedDue: masterUpdateResult.newMaster?.due || currentItem.due,
+            updatedStatus: masterUpdateResult.newMaster?.status || currentItem.status,
+            operatorRemark: remarkValue,
             masterLocationUpdated: savedMasterLocationUpdated,
             masterDueUpdated: savedMasterDueUpdated,
             masterStatusUpdated: savedMasterStatusUpdated,
@@ -2513,20 +3069,83 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
         const resultText = isMissing ? "missing" : abnormal ? "abnormal" : "pass";
         const resultToastType = isMissing || abnormal ? "warning" : "success";
         const feedbackType = isMissing ? "info" : abnormal ? "fail" : "pass";
+        const extraScan = V44_EXTRA_SCOPES.has(scanClassification.scope);
+        const saveMessage = extraScan
+            ? `Audit saved to Out-of-Period Scans (${v44ScopeText(scanClassification.scope)}).`
+            : isMissing ? "Equipment marked as missing."
+                : abnormal ? "Abnormal audit record saved." : "Audit record saved.";
 
-        if (isEditMode) {
+        if (fieldsChanged) {
+            if (!isOnline) throw Error("Reconnect to Firebase to save a master-field change with its audit log.");
+            const fieldRef = db.ref("equipment_change_log").push();
+            const actionAuditRef = db.ref("audit_history").push();
+            const changes = { ...masterUpdateResult.changes };
+            const changeLog = {
+                equipmentCode: masterUpdateResult.code,
+                sourceAuditCloudId: isEditMode ? actionAuditRef.key : actionAuditRef.key,
+                changedBy: loggedInUser, changedAtISO: now.toISOString(),
+                remark: remarkValue,
+                fields: masterUpdateResult.fields.map(({field, before, after}) => ({
+                    field: field === "loc" ? "location" : field,
+                    oldValue: before, newValue: after
+                }))
+            };
+            changes[`equipment_change_log/${fieldRef.key}`] = changeLog;
+            if (isEditMode && existingRecord.cloudId) {
+                // Preserve original evidence and append a new, timestamped scan-
+                // change event; importing dashboards detect new cloud IDs.
+                auditData.cloudId = existingRecord.cloudId;
+                auditData.editedBy = loggedInUser;
+                auditData.editedAt = dateTimeString;
+                changes[`audit_history/${existingRecord.cloudId}`] = {...existingRecord, ...auditData};
+                changes[`audit_history/${actionAuditRef.key}`] = {
+                    ...auditData, cloudId: actionAuditRef.key, id: now.getTime(),
+                    pic: loggedInUser, scanDateISO: now.toISOString(),
+                    masterFieldChangeEvent: true, auditStatus: "CHANGE_LOG",
+                    masterLocationUpdated, masterStatusUpdated, masterDueUpdated,
+                    operatorRemark: remarkValue
+                };
+            } else {
+                auditData.cloudId = actionAuditRef.key;
+                changes[`audit_history/${actionAuditRef.key}`] = auditData;
+            }
+            // Preflight guards against stale tabs; Firebase's master/log/audit
+            // multi-path commit then succeeds or fails as one unit.
+            const latestSnapshot = await db.ref(`master_list/masterDB/${masterUpdateResult.code}`).once("value");
+            const latest = latestSnapshot.val();
+            const starting = masterDB[masterUpdateResult.code];
+            if (!latest || ["loc", "due", "status"].some(field =>
+                String(latest[field] || "") !== String(starting[field] || ""))) {
+                throw Error("Another operator changed this equipment. Close and rescan to reload the latest master.");
+            }
+            await db.ref().update(changes);
+            masterDB[masterUpdateResult.code] = masterUpdateResult.newMaster;
+            currentItem = {...currentItem, ...masterUpdateResult.newMaster};
+            updateRawMasterFields(masterUpdateResult.code,
+                masterLocationUpdated ? currentItem.loc : null,
+                masterDueUpdated ? currentItem.due : null,
+                masterStatusUpdated ? currentItem.status : null);
+            if (isEditMode) {
+                const index = scanHistory.findIndex(x => x.cloudId === auditData.cloudId);
+                if (index >= 0) scanHistory[index] = {...scanHistory[index], ...auditData};
+            } else if (!scanHistory.some(x => x.cloudId === auditData.cloudId)) scanHistory.unshift(auditData);
+            rebuildFilters();
+            updateDisplay();
+            v2SetLastScan(auditData.barcode, "Saved - master updated and logged");
+            showToast(`${masterUpdateResult.code}: equipment changes and remark synchronized to Firebase.`, "success");
+        } else if (isEditMode) {
             if (existingRecord.cloudId) auditData.cloudId = existingRecord.cloudId;
             auditData.editedBy = loggedInUser;
             auditData.editedAt = dateTimeString;
             await saveEditedAuditRecord(auditData);
             v2SetLastScan(auditData.barcode, `Updated - ${resultText}`);
-            showToast(isMissing ? "Equipment remains marked as missing." : "Audit record updated.", resultToastType);
+            showToast("Audit record updated.", resultToastType);
         } else if (isOnline) {
             const newRef = db.ref("audit_history").push();
             auditData.cloudId = newRef.key;
             await newRef.set(auditData);
             v2SetLastScan(auditData.barcode, `Saved - ${resultText}`);
-            showToast(isMissing ? "Equipment marked as missing." : abnormal ? "Abnormal audit record saved." : "Audit record saved.", resultToastType);
+            showToast(saveMessage, resultToastType);
         } else {
             pendingUploads.push(auditData);
             localStorage.setItem("pending_queue", JSON.stringify(pendingUploads));
@@ -2534,7 +3153,7 @@ async function v2SaveAuditRecord({ isMissing = false, missingEmail = null } = {}
             v2UpdatePendingBadge();
             updateDisplay();
             v2SetLastScan(auditData.barcode, `Queued - ${resultText}`);
-            showToast(isMissing ? "Offline: missing record queued for synchronization." : "Offline: audit record queued for synchronization.", "warning");
+            showToast("Offline: scan queued. Master data was not changed.", "warning");
         }
 
         v2Feedback(feedbackType);
@@ -2594,6 +3213,7 @@ async function submitMissingEquipment() {
 
 function closeModal() {
     const barcode = currentItem?.barcode || "";
+    v45CloseEquipmentAction(true);
     v37HideMissingEmailModal();
     v37MissingSelectionSnapshot = null;
     v37MissingEmailSending = false;
@@ -3906,7 +4526,10 @@ function v2BuildLatestAuditByCode() {
 
 function v2EquipmentExportStatus(latestAudit) {
     if (!latestAudit) return "PENDING";
-    return v2IsMissingAudit(latestAudit) ? "MISSING" : "OK";
+    if (v2IsMissingAudit(latestAudit)) return "MISSING";
+    const category = v2AuditCategory(latestAudit);
+    if (category === "BROKEN" || category === "DONE CAL") return category;
+    return "OK";
 }
 
 function v2GetOrderedMasterEquipment() {
@@ -3953,7 +4576,7 @@ function v2BuildFilteredCsvData() {
         "Status"
     ];
     const rows = [];
-    const statusCounts = { OK: 0, MISSING: 0, PENDING: 0 };
+    const statusCounts = { OK: 0, MISSING: 0, PENDING: 0, BROKEN: 0, "DONE CAL": 0 };
 
     orderedCodes.forEach(code => {
         const item = itemsByCode.get(code);
@@ -4043,7 +4666,9 @@ function exportFilteredCsv() {
             `CSV created: ${data.rows.length} equipment (` +
             `${data.statusCounts.OK} OK, ` +
             `${data.statusCounts.MISSING} MISSING, ` +
-            `${data.statusCounts.PENDING} PENDING).`,
+            `${data.statusCounts.PENDING} PENDING, ` +
+            `${data.statusCounts.BROKEN} BROKEN, ` +
+            `${data.statusCounts["DONE CAL"]} DONE CAL).`,
             "success",
             5200
         );
@@ -4086,13 +4711,15 @@ function v2BuildReportData(useFilters) {
         "STICKER LOCATION AUDIT",
         "DUE AUDIT",
         "MSA AUDIT",
-        "REMARK"
+        "REMARK",
+        "NEXT CALIBRATION DATE"
     ];
 
     const allRows = [header];
     const passedRows = [header];
     const abnormalRows = [header];
     const missingRows = [header];
+    const doneCalRows = [header];
     const pendingRows = [header];
 
     Object.keys(masterDB).sort().forEach(code => {
@@ -4116,18 +4743,21 @@ function v2BuildReportData(useFilters) {
                 audit.stickerLocRes || "",
                 audit.dueRes || "",
                 audit.msaRes || "",
-                audit.remark || ""
+                audit.remark || "",
+                audit.nextCalibrationDate || item.nextCalibrationDate || ""
             ];
 
             if (auditCategory === "MISSING") {
                 missingRows.push(row);
-            } else if (auditCategory === "ABNORMAL") {
+            } else if (v2IsAbnormalAudit(audit)) {
                 abnormalRows.push(row);
+            } else if (auditCategory === "DONE CAL") {
+                doneCalRows.push(row);
             } else {
                 passedRows.push(row);
             }
         } else {
-            row = [...base, "PENDING", "", "", "", "", "", "", ""];
+            row = [...base, "PENDING", "", "", "", "", "", "", "", item.nextCalibrationDate || ""];
             pendingRows.push(row);
         }
 
@@ -4155,14 +4785,15 @@ function v2BuildReportData(useFilters) {
             record.stickerLocRes || "",
             record.dueRes || "",
             record.msaRes || "",
-            record.remark || ""
+            record.remark || "",
+            record.nextCalibrationDate || ""
         ]);
     });
 
     const auditorMap = new Map();
     const ensureAuditor = auditor => {
         if (!auditorMap.has(auditor)) {
-            auditorMap.set(auditor, { total: 0, passed: 0, abnormal: 0, missing: 0 });
+            auditorMap.set(auditor, { total: 0, passed: 0, abnormal: 0, missing: 0, doneCal: 0 });
         }
         return auditorMap.get(auditor);
     };
@@ -4175,8 +4806,9 @@ function v2BuildReportData(useFilters) {
         const stats = ensureAuditor(auditor);
         stats.total += 1;
         if (auditStatus === "PASS") stats.passed += 1;
-        if (auditStatus === "FAIL") stats.abnormal += 1;
+        if (["FAIL", "BROKEN"].includes(auditStatus)) stats.abnormal += 1;
         if (auditStatus === "MISSING") stats.missing += 1;
+        if (auditStatus === "DONE CAL") stats.doneCal += 1;
     });
 
     unregisteredRows.slice(1).forEach(row => {
@@ -4190,25 +4822,31 @@ function v2BuildReportData(useFilters) {
         }
     });
 
-    const auditorRows = [["AUDITOR", "TOTAL SCANS", "PASSED", "ABNORMAL", "MISSING", "PASS RATE"]];
+    const auditorRows = [["AUDITOR", "TOTAL SCANS", "PASSED", "ABNORMAL", "MISSING", "DONE CAL", "PASS RATE"]];
     Array.from(auditorMap.entries())
         .sort((a, b) => b[1].total - a[1].total)
         .forEach(([auditor, stats]) => {
             const passRate = stats.total ? `${Math.round((stats.passed / stats.total) * 100)}%` : "0%";
-            auditorRows.push([auditor, stats.total, stats.passed, stats.abnormal, stats.missing, passRate]);
+            auditorRows.push([auditor, stats.total, stats.passed, stats.abnormal, stats.missing, stats.doneCal, passRate]);
         });
 
     const totalMaster = allRows.length - 1;
     const passed = passedRows.length - 1;
     const abnormal = abnormalRows.length - 1;
     const missing = missingRows.length - 1;
+    const doneCal = doneCalRows.length - 1;
     const pending = pendingRows.length - 1;
     const unregistered = unregisteredRows.length - 1;
-    const scanned = passed + abnormal + missing;
+    const scanned = passed + abnormal + missing + doneCal;
     const completion = totalMaster ? `${Math.round((scanned / totalMaster) * 100)}%` : "0%";
 
+    const outOfPeriodRows = v44ExtraScanRows(v44VisibleExtraScans(
+        useFilters ? filters : { buildings: [], productions: [], months: [], years: [], statuses: [] },
+        useFilters ? search : ""
+    ));
+
     const summaryRows = [
-        ["GRID V4.3 INVENTORY AUDIT REPORT"],
+        ["GRID V4.5 INVENTORY AUDIT REPORT"],
         ["Generated", new Date().toLocaleString("en-MY")],
         ["Generated by", loggedInUser || "Unknown"],
         ["Scope", v2ReportFiltersDescription(filters, search)],
@@ -4219,8 +4857,10 @@ function v2BuildReportData(useFilters) {
         ["Passed", passed],
         ["Abnormal", abnormal],
         ["Missing equipment", missing],
+        ["Done calibration", doneCal],
         ["Pending", pending],
         ["Unregistered", unregistered],
+        ["Out-of-period scans", outOfPeriodRows.length - 1],
         ["Completion", completion]
     ];
 
@@ -4230,9 +4870,11 @@ function v2BuildReportData(useFilters) {
         passedRows,
         abnormalRows,
         missingRows,
+        doneCalRows,
         pendingRows,
         unregisteredRows,
         auditorRows,
+        outOfPeriodRows,
         filters,
         search
     };
@@ -4247,16 +4889,20 @@ function v2WriteReport(useFilters) {
     try {
         const report = v2BuildReportData(useFilters);
         const workbook = XLSX.utils.book_new();
-        const dataWidths = [20, 32, 24, 12, 16, 10, 14, 20, 18, 16, 20, 16, 14, 38];
+        const dataWidths = [20, 32, 24, 12, 16, 10, 14, 20, 18, 16, 20, 16, 14, 38, 23];
 
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.summaryRows, [25, 60], false), "Summary");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.allRows, dataWidths), "All Equipment");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.passedRows, dataWidths), "Passed");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.abnormalRows, dataWidths), "Abnormal");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.missingRows, dataWidths), "Missing");
+        XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.doneCalRows, dataWidths), "Done Cal");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.pendingRows, dataWidths), "Pending");
         XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.unregisteredRows, dataWidths), "Unregistered");
-        XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.auditorRows, [24, 14, 12, 14, 12, 12]), "Auditor Summary");
+        XLSX.utils.book_append_sheet(workbook,
+            v2Worksheet(report.outOfPeriodRows, [21, 21, 31, 24, 17, 23, 25, 16, 20, 40, 23]),
+            "Out of Period");
+        XLSX.utils.book_append_sheet(workbook, v2Worksheet(report.auditorRows, [24, 14, 12, 14, 12, 14, 12]), "Auditor Summary");
 
         const scope = useFilters
             ? v2Slug(
@@ -4289,7 +4935,7 @@ function exportFilteredOnly() {
 /* Startup wiring                                                              */
 /* -------------------------------------------------------------------------- */
 
-// Explicit stable import entry point retained in V4.3. The versioned script URL prevents an older
+// Explicit stable import entry point retained in V4.5. The versioned script URL prevents an older
 // service-worker copy from silently handling a newly deployed master file.
 window.loadMasterDataV36 = loadMasterDataV36;
 window.loadMasterData = loadMasterDataV36;
@@ -4387,7 +5033,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateDisplay();
 
     if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
-        navigator.serviceWorker.register("./sw.js?v=4.2.0", { updateViaCache: "none" })
+        navigator.serviceWorker.register("./sw.js?v=4.5.0", { updateViaCache: "none" })
             .then(registration => registration.update())
             .catch(() => {
             // The app remains fully usable without service worker support.
